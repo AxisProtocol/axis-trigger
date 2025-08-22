@@ -1,0 +1,22 @@
+{
+  "assets": [
+    {
+      "symbol": "BTC",
+      "coingeckoId": "bitcoin",
+      "circulatingSupply": 19700000,
+      "foundationHoldings": 0,
+      "lockedSupply": 0,
+      "heavilyVestedStaked": 0,
+      "exchangeCustodyHoldings": 3000000
+    },
+    {
+      "symbol": "ETH",
+      "coingeckoId": "ethereum",
+      "circulatingSupply": 120000000,
+      "foundationHoldings": 2000000,
+      "lockedSupply": 1000000,
+      "heavilyVestedStaked": 30000000,
+      "exchangeCustodyHoldings": 15000000
+    }
+  ]
+}
