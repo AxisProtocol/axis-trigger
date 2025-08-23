@@ -7,7 +7,6 @@ export function loadAppConfig(): AppConfig {
   const parsed = appConfigSchema.safeParse({
     cronSchedule: process.env.CRON_SCHEDULE,
     cronTimezone: process.env.CRON_TZ,
-    runOnce: parseBoolean(process.env.RUN_ONCE),
     assetConfigFilePath: process.env.ASSET_CONFIG_FILE
   });
 
@@ -17,13 +16,5 @@ export function loadAppConfig(): AppConfig {
   }
 
   return parsed.data;
-}
-
-function parseBoolean(value: string | undefined): boolean | undefined {
-  if (value === undefined) return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (["1", "true", "yes", "y"].includes(normalized)) return true;
-  if (["0", "false", "no", "n"].includes(normalized)) return false;
-  return undefined;
 }
 

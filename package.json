@@ -5,28 +5,25 @@
   "description": "Cron service to compute Free-Float Adjusted Market Capitalization (FAMC) for index tokens.",
   "license": "MIT",
   "type": "commonjs",
-  "main": "dist/index.js",
+  "main": "dist/trigger.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
-    "dev": "ts-node --transpile-only src/index.ts",
-    "once": "cross-env RUN_ONCE=1 ts-node --transpile-only src/index.ts",
-    "cron": "ts-node --transpile-only src/index.ts"
+    "trigger:dev": "pnpm dlx trigger.dev@latest dev",
+    "trigger:deploy": "pnpm dlx trigger.dev@latest deploy"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
-    "node-cron": "^3.0.3",
     "zod": "^3.23.8",
-    "undici": "^6.19.8"
+    "undici": "^6.19.8",
+    "@trigger.dev/sdk": "4.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.6.3",
-    "cross-env": "^7.0.3"
+    "typescript": "^5.6.3"
   },
   "packageManager": "pnpm@10.10.0+sha512.d615db246fe70f25dcfea6d8d73dee782ce23e2245e3c4f6f888249fb568149318637dca73c2c5c8ef2a4ca0d5657fb9567188bfab47f566d1ee6ce987815c39"
 }
