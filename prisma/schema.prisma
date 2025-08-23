@@ -19,4 +19,18 @@ model Price {
   @@unique([symbol, priceTimestamp, source])
 }
 
+model Asset {
+  id                       BigInt   @id @default(autoincrement())
+  symbol                   String   @unique
+  coingeckoId              String?
+  binanceSymbol            String?
+  circulatingSupply        Decimal  @db.Decimal(38, 18)
+  foundationHoldings       Decimal  @db.Decimal(38, 18) @default(0)
+  lockedSupply             Decimal  @db.Decimal(38, 18) @default(0)
+  heavilyVestedStaked      Decimal  @db.Decimal(38, 18) @default(0)
+  exchangeCustodyHoldings  Decimal  @db.Decimal(38, 18) @default(0)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+}
+
 

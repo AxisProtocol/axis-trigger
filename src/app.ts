@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { swaggerUI } from "@hono/swagger-ui";
 import { openapiSpec } from "./openapi";
+import { loadAppConfig } from "./config";
+import { loadAssetsFromConfigFile, loadAssetsFromEnv } from "./providers/envAssets";
 
 export function createBaseApp(): Hono {
   const app = new Hono();
@@ -13,6 +15,15 @@ export function createBaseApp(): Hono {
   app.get("/docs", swaggerUI({ url: "/swagger.json" }));
   app.get("/swagger.json", (c) => c.json(openapiSpec));
   app.get("/openapi.json", (c) => c.json(openapiSpec));
+
+  app.get("/api/assets", (c) => {
+    const cfg = loadAppConfig();
+    const assets = cfg.assetConfigFilePath
+      ? loadAssetsFromConfigFile(cfg.assetConfigFilePath)
+      : loadAssetsFromEnv();
+    const symbols = assets.map(a => a.symbol);
+    return c.json({ assets, symbols });
+  });
 
   // TradingView endpoints that do not require DB
   app.get("/tv/config", (c) => {

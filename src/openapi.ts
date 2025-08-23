@@ -31,6 +31,51 @@ export const openapiSpec = {
         },
       },
     },
+    "/api/assets": {
+      get: {
+        summary: "List configured assets",
+        responses: {
+          "200": {
+            description: "Current assets and symbols",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    assets: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          symbol: { type: "string" },
+                          coingeckoId: { type: "string" },
+                          binanceSymbol: { type: "string" },
+                          circulatingSupply: { type: "number" },
+                          foundationHoldings: { type: "number" },
+                          lockedSupply: { type: "number" },
+                          heavilyVestedStaked: { type: "number" },
+                          exchangeCustodyHoldings: { type: "number" },
+                        },
+                        required: [
+                          "symbol",
+                          "circulatingSupply",
+                          "foundationHoldings",
+                          "lockedSupply",
+                          "heavilyVestedStaked",
+                          "exchangeCustodyHoldings",
+                        ],
+                      },
+                    },
+                    symbols: { type: "array", items: { type: "string" } },
+                  },
+                  required: ["assets", "symbols"],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     "/api/index": {
       get: {
         summary: "Get index close-only series",
