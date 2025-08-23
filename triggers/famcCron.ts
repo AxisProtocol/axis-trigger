@@ -1,10 +1,10 @@
 import { schedules } from "@trigger.dev/sdk";
-import { loadAppConfig } from "../config";
-import { loadAssetsFromConfigFile, loadAssetsFromEnv } from "../providers/envAssets";
-import { fetchCoinGeckoPrices } from "../providers/prices/coingecko";
-import { fetchCoinGeckoRangeUSD } from "../providers/prices/coingeckoRange";
-import { prisma } from "../db/client";
-import { computeFAMC } from "../calc/famc";
+import { loadAppConfig } from "../src/config";
+import { loadAssetsFromConfigFile, loadAssetsFromEnv } from "../src/providers/envAssets";
+import { fetchCoinGeckoPrices } from "../src/providers/prices/coingecko";
+import { fetchCoinGeckoRangeUSD } from "../src/providers/prices/coingeckoRange";
+import { prisma } from "../src/db/client";
+import { computeFAMC } from "../src/calc/famc";
 
 // Declarative scheduled task for Trigger.dev v4
 export const famcCron = schedules.task({
@@ -69,5 +69,6 @@ export const famcCron = schedules.task({
     };
   }
 });
+
 
 

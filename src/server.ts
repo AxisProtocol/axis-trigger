@@ -9,7 +9,7 @@ const app = createBaseApp({ includeDbRoutesInDocs: true });
 
 registerIndexRoutes(app);
 
-const port = Number(process.env.PORT || 8787);
+const port = Number(process.env.PORT || 8789);
 serve({ fetch: app.fetch, port });
 // eslint-disable-next-line no-console
 console.log(`OpenAPI docs on http://localhost:${port}/docs`);

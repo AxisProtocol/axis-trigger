@@ -17,7 +17,7 @@
     "backfill:prices": "ts-node src/scripts/backfillPrices.ts",
     "assets:update": "ts-node src/scripts/updateAssetsFromCG.ts",
     "dev": "ts-node src/server.ts",
-    "cf:dev": "pnpm build && pnpm dlx wrangler dev --port 8787",
+    "cf:dev": "pnpm build && pnpm dlx wrangler dev --port 8788",
     "cf:deploy": "pnpm build && pnpm dlx wrangler deploy"
   },
   "engines": {
