@@ -1,4 +1,4 @@
-import { prisma } from "../db/client";
+import type { PrismaLike } from "../db/types";
 import { loadAppConfig } from "../config";
 import { loadAssetsFromConfigFile, loadAssetsFromEnv, loadAssetsFromBundledConfig } from "../providers/envAssets";
 import { computeFreeFloat } from "../calc/famc";
@@ -37,7 +37,12 @@ export async function loadAssetFreeFloats(): Promise<{ symbols: string[]; freeFl
   return { symbols, freeFloatBySymbol };
 }
 
-export async function computeIndexSeries(fromSec: number, toSec: number, resolution: Resolution): Promise<{ t: number[]; c: number[]; }>
+export async function computeIndexSeries(
+  fromSec: number,
+  toSec: number,
+  resolution: Resolution,
+  prisma: PrismaLike,
+): Promise<{ t: number[]; c: number[]; }>
 {
   const { symbols, freeFloatBySymbol } = await loadAssetFreeFloats();
   const intervalSec = RES_TO_SEC[resolution];

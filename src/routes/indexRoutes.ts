@@ -3,7 +3,7 @@ import { computeIndexSeries, SUPPORTED_RESOLUTIONS, loadAssetFreeFloats } from "
 import type { Resolution } from "../services/indexSeries";
 import { loadAppConfig } from "../config";
 import { loadAssetsFromConfigFile, loadAssetsFromEnv, loadAssetsFromBundledConfig } from "../providers/envAssets";
-import { prisma } from "../db/client";
+import type { PrismaLike } from "../db/types";
 
 // Base day reference prices for equal-weight index computation
 const baseDayData = {
@@ -30,7 +30,8 @@ export function registerIndexRoutes(app: Hono): void {
     if (!SUPPORTED_RESOLUTIONS.includes(resolution)) {
       return c.json({ message: "invalid resolution" }, 400);
     }
-    const { t, c: values } = await computeIndexSeries(from, to, resolution);
+    const prisma = ((c as any).get("prisma") as PrismaLike);
+    const { t, c: values } = await computeIndexSeries(from, to, resolution, prisma);
     return c.json({ t, value: values, resolution });
   });
 
@@ -45,7 +46,8 @@ export function registerIndexRoutes(app: Hono): void {
     if (!SUPPORTED_RESOLUTIONS.includes(resolution)) {
       return c.json({ s: "error", errmsg: "invalid resolution" }, 400);
     }
-    const { t, c: values } = await computeIndexSeries(from, to, resolution);
+    const prisma = ((c as any).get("prisma") as PrismaLike);
+    const { t, c: values } = await computeIndexSeries(from, to, resolution, prisma);
     if (t.length === 0) return c.json({ s: "no_data" });
     const o = values.slice();
     const h = values.slice();
@@ -61,6 +63,7 @@ export function registerIndexRoutes(app: Hono): void {
     if (assets.length === 0) return c.json({ message: "no assets configured" }, 400);
     const symbols = assets.map(a => a.symbol);
     // fetch latest price per symbol
+    const prisma = ((c as any).get("prisma") as PrismaLike);
     const rows = await prisma.$queryRawUnsafe<Array<{ symbol: string; price: string }>>(
       `
       SELECT DISTINCT ON (symbol) symbol, price
@@ -100,6 +103,7 @@ export function registerIndexRoutes(app: Hono): void {
     const symbols = assets.map(a => a.symbol);
 
     // Latest prices now
+    const prisma = ((c as any).get("prisma") as PrismaLike);
     const latestRows = await prisma.$queryRawUnsafe<Array<{ symbol: string; price: string }>>(
       `
       SELECT DISTINCT ON (symbol) symbol, price
