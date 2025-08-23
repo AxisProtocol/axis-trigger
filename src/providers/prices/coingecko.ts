@@ -1,5 +1,6 @@
 import { fetch } from "undici";
 import { type AssetInput, type PriceQuote } from "../../types";
+import { getCoinGeckoHeaders, getCoinGeckoBaseUrl } from "./cgHeaders";
 
 interface CoinGeckoSimplePriceResponse {
   [id: string]: {
@@ -20,8 +21,9 @@ export async function fetchCoinGeckoPrices(assets: AssetInput[]): Promise<Map<st
   if (ids.length === 0) {
     return new Map();
   }
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids.join(","))}&vs_currencies=usd&include_last_updated_at=true`;
-  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  const base = getCoinGeckoBaseUrl();
+  const url = `${base}/simple/price?ids=${encodeURIComponent(ids.join(","))}&vs_currencies=usd&include_last_updated_at=true`;
+  const res = await fetch(url, { headers: getCoinGeckoHeaders() });
   if (!res.ok) {
     throw new Error(`CoinGecko price fetch failed: ${res.status} ${res.statusText}`);
   }
