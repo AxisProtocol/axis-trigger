@@ -6,86 +6,70 @@ import path from "path";
 import { prisma } from "../db/client";
 import { getCoinGeckoBaseUrl, getCoinGeckoHeaders } from "../providers/prices/cgHeaders";
 
-interface MarketsItem {
+interface CoinDetailResponse {
   id: string;
-  symbol: string;
+  symbol: string; // e.g. "btc"
   name: string;
-  circulating_supply: number | null;
+  market_data?: {
+    circulating_supply?: number | null;
+  };
 }
 
-const DEFAULT_SYMBOLS = [
-  "BTC", "ETH", "SOL", "BNB", "XRP",
-  "DOGE", "ADA", "AVAX", "TRX", "SUI",
+const DEFAULT_COINGECKO_IDS = [
+  "bitcoin",
+  "ethereum",
+  "solana",
+  "binancecoin",
+  "ripple",
+  "dogecoin",
+  "cardano",
+  "avalanche-2",
+  "tron",
+  "sui",
 ];
 
-const DEFAULT_SYMBOL_TO_CG_ID: Record<string, string> = {
-  BTC: "bitcoin",
-  ETH: "ethereum",
-  SOL: "solana",
-  BNB: "binancecoin",
-  XRP: "ripple",
-  DOGE: "dogecoin",
-  ADA: "cardano",
-  AVAX: "avalanche-2",
-  TRX: "tron",
-  SUI: "sui",
-};
+function resolveCoinGeckoIds(): string[] {
+  const raw = (process.env.COINGECKO_IDS || process.env.COIN_IDS || process.env.ASSETS || "");
+  const ids = raw
+    .split(",")
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean);
+  return ids.length > 0 ? ids : DEFAULT_COINGECKO_IDS;
+}
 
-async function fetchCirculatingSupplies(ids: string[]): Promise<Map<string, number>> {
+async function fetchCoinDetailsByIds(ids: string[]): Promise<Map<string, CoinDetailResponse>> {
   const base = getCoinGeckoBaseUrl();
   const headers = getCoinGeckoHeaders();
-  const perPage = 250; // API max
-  const result = new Map<string, number>();
+  const query = "?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false";
 
-  for (let i = 0; i < ids.length; i += perPage) {
-    const slice = ids.slice(i, i + perPage);
-    const url = `${base}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(slice.join(","))}`;
-    const res = await fetch(url, { headers });
+  const results = await Promise.all(ids.map(async (id) => {
+    const res = await fetch(`${base}/coins/${encodeURIComponent(id)}${query}`, { headers });
     if (!res.ok) {
-      throw new Error(`CoinGecko markets fetch failed: ${res.status} ${res.statusText}`);
+      throw new Error(`CoinGecko coin detail fetch failed for id=${id}: ${res.status} ${res.statusText}`);
     }
-    const data = (await res.json()) as MarketsItem[];
-    for (const item of data) {
-      if (typeof item.circulating_supply === "number" && Number.isFinite(item.circulating_supply)) {
-        result.set(item.id, item.circulating_supply);
-      }
-    }
-  }
+    const data = (await res.json()) as CoinDetailResponse;
+    return [id, data] as const;
+  }));
 
-  return result;
-}
-
-function resolveSymbols(): string[] {
-  const fromEnv = (process.env.ASSETS || "")
-    .split(",")
-    .map(s => s.trim().toUpperCase())
-    .filter(Boolean);
-  return fromEnv.length > 0 ? fromEnv : DEFAULT_SYMBOLS;
-}
-
-function resolveCoinGeckoId(symbol: string): string {
-  const envKey = process.env[`${symbol}_COINGECKO_ID`];
-  if (envKey && envKey.trim()) return envKey.trim();
-  const mapped = DEFAULT_SYMBOL_TO_CG_ID[symbol];
-  if (!mapped) throw new Error(`No CoinGecko ID mapping for symbol ${symbol}. Provide ${symbol}_COINGECKO_ID env.`);
-  return mapped;
+  return new Map(results);
 }
 
 async function main(): Promise<void> {
-  const symbols = resolveSymbols();
-  const ids = symbols.map(resolveCoinGeckoId);
-  const supplyById = await fetchCirculatingSupplies(ids);
+  const ids = resolveCoinGeckoIds();
+  const detailById = await fetchCoinDetailsByIds(ids);
 
-  const assets = symbols.map(symbol => {
-    const id = resolveCoinGeckoId(symbol);
-    const circulatingSupply = supplyById.get(id);
-    if (circulatingSupply === undefined) {
-      throw new Error(`Missing circulating supply for ${symbol} (id=${id}).`);
+  const assets = ids.map(id => {
+    const detail = detailById.get(id);
+    if (!detail) throw new Error(`Missing coin detail for id=${id}`);
+    const supply = detail.market_data?.circulating_supply;
+    if (typeof supply !== "number" || !Number.isFinite(supply)) {
+      throw new Error(`Missing circulating_supply for id=${id}`);
     }
+    const symbol = (detail.symbol || id).toUpperCase();
     return {
       symbol,
       coingeckoId: id,
-      circulatingSupply,
+      circulatingSupply: supply,
       foundationHoldings: 0,
       lockedSupply: 0,
       heavilyVestedStaked: 0,
