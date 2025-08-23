@@ -4,6 +4,7 @@ dotenv.config();
 import { serve } from "@hono/node-server";
 import { createBaseApp } from "./app";
 import { registerIndexRoutes } from "./routes/indexRoutes";
+import { registerUpdateRoutes } from "./routes/updateRoutes";
 import { prisma } from "./db/client";
 import type { PrismaLike } from "./db/types";
 
@@ -16,6 +17,7 @@ app.use("/*", async (c, next) => {
 });
 
 registerIndexRoutes(app);
+registerUpdateRoutes(app);
 
 const port = Number(process.env.PORT || 8789);
 serve({ fetch: app.fetch, port });

@@ -1,5 +1,6 @@
 import { createBaseApp } from "./app";
 import { registerIndexRoutes } from "./routes/indexRoutes";
+import { registerUpdateRoutes } from "./routes/updateRoutes";
 import { createPrisma } from "./db/edgeClient";
 import type { PrismaLike } from "./db/types";
 
@@ -18,6 +19,7 @@ app.use("/*", async (c, next) => {
 });
 
 registerIndexRoutes(app);
+registerUpdateRoutes(app);
 
 export default {
   async fetch(request: Request, env: { DATABASE_URL: string }, ctx?: any) {
