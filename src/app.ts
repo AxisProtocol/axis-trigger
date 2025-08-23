@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 import { swaggerUI } from "@hono/swagger-ui";
 import { createOpenApiSpec } from "./openapi";
 import { loadAppConfig } from "./config";
-import { loadAssetsFromConfigFile, loadAssetsFromEnv } from "./providers/envAssets";
+import { loadAssetsFromConfigFile, loadAssetsFromEnv, loadAssetsFromBundledConfig } from "./providers/envAssets";
 
 type AppOptions = { includeDbRoutesInDocs?: boolean };
 
@@ -22,7 +22,7 @@ export function createBaseApp(options: AppOptions = {}): Hono {
   app.get("/api/assets", (c) => {
     const cfg = loadAppConfig();
     const assets = cfg.assetConfigFilePath
-      ? loadAssetsFromConfigFile(cfg.assetConfigFilePath)
+      ? loadAssetsFromBundledConfig()
       : loadAssetsFromEnv();
     const symbols = assets.map(a => a.symbol);
     return c.json({ assets, symbols });

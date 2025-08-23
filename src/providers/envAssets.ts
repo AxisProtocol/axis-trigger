@@ -1,6 +1,9 @@
 import fs from "fs";
 import path from "path";
 import { assetConfigFileSchema, assetInputSchema, type AssetInput, type AssetConfigFile } from "../types";
+// Import the bundled JSON so it is available in Cloudflare Workers (no filesystem)
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import bundledAssetConfigJson from "../../assets.config.json";
 
 export function loadAssetsFromConfigFile(configFilePath: string): AssetInput[] {
   const resolved = path.resolve(process.cwd(), configFilePath);
@@ -15,6 +18,12 @@ export function loadAssetsFromConfigFile(configFilePath: string): AssetInput[] {
     throw new Error(`Failed to parse JSON at ${resolved}: ${(e as Error).message}`);
   }
   const validated = assetConfigFileSchema.parse(parsed as AssetConfigFile);
+  return validated.assets.map(normalizeAsset);
+}
+
+// Use the bundled JSON (works on Cloudflare Workers where fs is unavailable)
+export function loadAssetsFromBundledConfig(): AssetInput[] {
+  const validated = assetConfigFileSchema.parse(bundledAssetConfigJson as unknown as AssetConfigFile);
   return validated.assets.map(normalizeAsset);
 }
 

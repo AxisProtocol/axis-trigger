@@ -151,9 +151,9 @@ export function createOpenApiSpec(options: OpenApiOptions = {}) {
   };
 
   if (includeDb) {
-    (paths as any)["/api/index"] = {
+    (paths as any)["/api/famc"] = {
       get: {
-        summary: "Get index close-only series",
+        summary: "Get FAMC index close-only series",
         parameters: [
           { in: "query", name: "from", required: false, schema: { type: "integer", format: "int64" }, description: "Start time (unix seconds). Defaults to 7 days ago." },
           { in: "query", name: "to", required: false, schema: { type: "integer", format: "int64" }, description: "End time (unix seconds). Defaults to now." },
@@ -219,7 +219,7 @@ export function createOpenApiSpec(options: OpenApiOptions = {}) {
       },
     };
 
-    (paths as any)["/api/indexavg"] = {
+    (paths as any)["/api/avgindexprice"] = {
       get: {
         summary: "Get equal-weight average latest price across assets",
         responses: {
@@ -283,6 +283,42 @@ export function createOpenApiSpec(options: OpenApiOptions = {}) {
           },
         },
       },
+    };
+
+    (paths as any)["/api/famcindexprice"] = {
+      get: {
+        summary: "Get normalized FAMC index price using earliest DB baseline",
+        parameters: [],
+        responses: {
+          "200": {
+            description: "Index price normalized to 100 at baseline",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    indexPrice: { type: "number" },
+                    baseDate: { type: "string", format: "date-time" },
+                    baseIndex: { type: "number" },
+                    currentIndex: { type: "number" },
+                    symbols: { type: "array", items: { type: "string" } },
+                    count: { type: "integer" }
+                  },
+                  required: ["indexPrice", "baseDate", "baseIndex", "currentIndex", "symbols", "count"]
+                }
+              }
+            }
+          },
+          "400": {
+            description: "Baseline index is zero or other validation error",
+            content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } } }
+          },
+          "404": {
+            description: "No prices available for baseline and latest",
+            content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } } }
+          }
+        }
+      }
     };
   }
 

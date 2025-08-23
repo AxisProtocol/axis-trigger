@@ -1,11 +1,13 @@
 name = "axis-trigger"
 main = "src/worker.ts"
-compatibility_date = "2024-08-01"
+compatibility_date = "2025-08-01"
+compatibility_flags = ["nodejs_compat"]
 
 [observability]
 enabled = true
 
 [vars]
 NODE_ENV = "production"
+ASSET_CONFIG_FILE = "assets.config.json"
 
 
