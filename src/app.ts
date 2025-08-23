@@ -1,20 +1,23 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { swaggerUI } from "@hono/swagger-ui";
-import { openapiSpec } from "./openapi";
+import { createOpenApiSpec } from "./openapi";
 import { loadAppConfig } from "./config";
 import { loadAssetsFromConfigFile, loadAssetsFromEnv } from "./providers/envAssets";
 
-export function createBaseApp(): Hono {
+type AppOptions = { includeDbRoutesInDocs?: boolean };
+
+export function createBaseApp(options: AppOptions = {}): Hono {
   const app = new Hono();
 
   app.use("/*", cors());
 
   app.get("/", (c) => c.json({ ok: true }));
 
+  const spec = createOpenApiSpec({ includeDbRoutes: Boolean(options.includeDbRoutesInDocs) });
   app.get("/docs", swaggerUI({ url: "/swagger.json" }));
-  app.get("/swagger.json", (c) => c.json(openapiSpec));
-  app.get("/openapi.json", (c) => c.json(openapiSpec));
+  app.get("/swagger.json", (c) => c.json(spec));
+  app.get("/openapi.json", (c) => c.json(spec));
 
   app.get("/api/assets", (c) => {
     const cfg = loadAppConfig();

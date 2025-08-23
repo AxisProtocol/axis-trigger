@@ -1,18 +1,11 @@
 // Minimal OpenAPI 3.1 spec describing current routes
 // Keep schemas concise; update as the API evolves
 
-export const openapiSpec = {
-  openapi: "3.1.0",
-  info: {
-    title: "Axis Trigger API",
-    version: "0.1.0",
-    description:
-      "API for computing FAMC index data and TradingView-compatible endpoints.",
-  },
-  servers: [
-    { url: "/" },
-  ],
-  paths: {
+type OpenApiOptions = { includeDbRoutes?: boolean };
+
+export function createOpenApiSpec(options: OpenApiOptions = {}) {
+  const includeDb = Boolean(options.includeDbRoutes);
+  const paths: Record<string, unknown> = {
     "/": {
       get: {
         summary: "Health check",
@@ -69,59 +62,6 @@ export const openapiSpec = {
                     symbols: { type: "array", items: { type: "string" } },
                   },
                   required: ["assets", "symbols"],
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    "/api/index": {
-      get: {
-        summary: "Get index close-only series",
-        parameters: [
-          {
-            in: "query",
-            name: "from",
-            required: false,
-            schema: { type: "integer", format: "int64" },
-            description: "Start time (unix seconds). Defaults to 7 days ago.",
-          },
-          {
-            in: "query",
-            name: "to",
-            required: false,
-            schema: { type: "integer", format: "int64" },
-            description: "End time (unix seconds). Defaults to now.",
-          },
-          {
-            in: "query",
-            name: "resolution",
-            required: false,
-            schema: {
-              type: "string",
-              enum: ["1", "5", "15", "60", "240", "D"],
-              default: "60",
-            },
-            description: "Bucket size.",
-          },
-        ],
-        responses: {
-          "200": {
-            description: "Close-only series",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    t: { type: "array", items: { type: "integer", format: "int64" } },
-                    value: { type: "array", items: { type: "number" } },
-                    resolution: {
-                      type: "string",
-                      enum: ["1", "5", "15", "60", "240", "D"],
-                    },
-                  },
-                  required: ["t", "value", "resolution"],
                 },
               },
             },
@@ -208,17 +148,44 @@ export const openapiSpec = {
         },
       },
     },
-    "/tv/history": {
+  };
+
+  if (includeDb) {
+    (paths as any)["/api/index"] = {
+      get: {
+        summary: "Get index close-only series",
+        parameters: [
+          { in: "query", name: "from", required: false, schema: { type: "integer", format: "int64" }, description: "Start time (unix seconds). Defaults to 7 days ago." },
+          { in: "query", name: "to", required: false, schema: { type: "integer", format: "int64" }, description: "End time (unix seconds). Defaults to now." },
+          { in: "query", name: "resolution", required: false, schema: { type: "string", enum: ["1", "5", "15", "60", "240", "D"], default: "60" }, description: "Bucket size." },
+        ],
+        responses: {
+          "200": {
+            description: "Close-only series",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    t: { type: "array", items: { type: "integer", format: "int64" } },
+                    value: { type: "array", items: { type: "number" } },
+                    resolution: { type: "string", enum: ["1", "5", "15", "60", "240", "D"] },
+                  },
+                  required: ["t", "value", "resolution"],
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    (paths as any)["/tv/history"] = {
       get: {
         summary: "TradingView UDF history",
         parameters: [
           { in: "query", name: "symbol", required: false, schema: { type: "string" } },
-          {
-            in: "query",
-            name: "resolution",
-            required: false,
-            schema: { type: "string", enum: ["1", "5", "15", "60", "240", "D"], default: "60" },
-          },
+          { in: "query", name: "resolution", required: false, schema: { type: "string", enum: ["1", "5", "15", "60", "240", "D"], default: "60" } },
           { in: "query", name: "from", required: true, schema: { type: "integer", format: "int64" } },
           { in: "query", name: "to", required: true, schema: { type: "integer", format: "int64" } },
         ],
@@ -229,20 +196,7 @@ export const openapiSpec = {
               "application/json": {
                 schema: {
                   oneOf: [
-                    {
-                      type: "object",
-                      properties: {
-                        s: { type: "string", enum: ["ok"] },
-                        t: { type: "array", items: { type: "integer", format: "int64" } },
-                        c: { type: "array", items: { type: "number" } },
-                        o: { type: "array", items: { type: "number" } },
-                        h: { type: "array", items: { type: "number" } },
-                        l: { type: "array", items: { type: "number" } },
-                        v: { type: "array", items: { type: "number" } },
-                        symbol: { type: "string" },
-                      },
-                      required: ["s", "t", "c", "o", "h", "l", "v"],
-                    },
+                    { type: "object", properties: { s: { type: "string", enum: ["ok"] }, t: { type: "array", items: { type: "integer", format: "int64" } }, c: { type: "array", items: { type: "number" } }, o: { type: "array", items: { type: "number" } }, h: { type: "array", items: { type: "number" } }, l: { type: "array", items: { type: "number" } }, v: { type: "array", items: { type: "number" } }, symbol: { type: "string" } }, required: ["s", "t", "c", "o", "h", "l", "v"] },
                     { type: "object", properties: { s: { type: "string", enum: ["no_data"] } }, required: ["s"] },
                   ],
                 },
@@ -263,8 +217,20 @@ export const openapiSpec = {
           },
         },
       },
+    };
+  }
+
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "Axis Trigger API",
+      version: "0.1.0",
+      description: "API for computing FAMC index data and TradingView-compatible endpoints.",
     },
-  },
-} as const;
+    servers: [{ url: "/" }],
+    paths,
+  } as const;
+}
+
 
 
