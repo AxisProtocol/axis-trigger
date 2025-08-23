@@ -4,10 +4,13 @@ dotenv.config();
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
+import { swaggerUI } from '@hono/swagger-ui'
 import { prisma } from "./db/client";
 import { loadAppConfig } from "./config";
 import { loadAssetsFromConfigFile, loadAssetsFromEnv } from "./providers/envAssets";
 import { computeFreeFloat } from "./calc/famc";
+import { openapiSpec } from "./openapi";
+import { createBaseApp } from "./app";
 
 type Resolution = "1" | "5" | "15" | "60" | "240" | "D";
 
@@ -81,10 +84,7 @@ async function computeIndexSeries(fromSec: number, toSec: number, resolution: Re
   return { t, c };
 }
 
-const app = new Hono();
-app.use("/*", cors());
-
-app.get("/", c => c.json({ ok: true }));
+const app = createBaseApp();
 
 // Simple JSON index API
 app.get("/api/index", async c => {
@@ -93,38 +93,6 @@ app.get("/api/index", async c => {
   const resolution = (c.req.query("resolution") as Resolution) || "60";
   const { t, c: values } = await computeIndexSeries(from, to, resolution);
   return c.json({ t, value: values, resolution });
-});
-
-// TradingView UDF endpoints
-app.get("/tv/config", c => {
-  return c.json({
-    supports_search: false,
-    supports_group_request: false,
-    supports_marks: false,
-    supports_timescale_marks: false,
-    supports_time: true,
-    supported_resolutions: ["1", "5", "15", "60", "240", "D"]
-  });
-});
-
-app.get("/tv/time", c => c.text(String(Math.floor(Date.now() / 1000))));
-
-app.get("/tv/symbols", c => {
-  const symbol = (c.req.query("symbol") || "INDEX:FAMC").toUpperCase();
-  return c.json({
-    name: symbol,
-    ticker: symbol,
-    description: "FAMC Index (sum of free-float market caps)",
-    type: "index",
-    session: "24x7",
-    timezone: "UTC",
-    minmov: 1,
-    pricescale: 100, // 2 decimal places
-    has_intraday: true,
-    supported_resolutions: ["1", "5", "15", "60", "240", "D"],
-    has_daily: true,
-    has_weekly_and_monthly: false
-  });
 });
 
 app.get("/tv/history", async c => {

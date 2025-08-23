@@ -15,13 +15,16 @@
     "prisma:studio": "prisma studio",
     "db:push": "prisma db push",
     "backfill:prices": "ts-node src/scripts/backfillPrices.ts",
-    "dev": "ts-node src/server.ts"
+    "dev": "ts-node src/server.ts",
+    "cf:dev": "pnpm build && pnpm dlx wrangler dev --port 8787",
+    "cf:deploy": "pnpm build && pnpm dlx wrangler deploy"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
+    "@hono/swagger-ui": "^0.5.2",
     "@prisma/client": "^6.14.0",
     "@trigger.dev/sdk": "4.0.1",
     "dotenv": "^16.4.5",
