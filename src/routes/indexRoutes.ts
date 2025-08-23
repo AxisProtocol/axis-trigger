@@ -1,6 +1,26 @@
 import type { Hono } from "hono";
 import { computeIndexSeries, SUPPORTED_RESOLUTIONS } from "../services/indexSeries";
 import type { Resolution } from "../services/indexSeries";
+import { loadAppConfig } from "../config";
+import { loadAssetsFromConfigFile, loadAssetsFromEnv } from "../providers/envAssets";
+import { prisma } from "../db/client";
+
+// Base day reference prices for equal-weight index computation
+const baseDayData = {
+  sumOfRatios: 27.431066558841906,
+  assets: [
+    { symbol: "BTC", basePrice: 42739.27 },
+    { symbol: "ETH", basePrice: 2528.09 },
+    { symbol: "XRP", basePrice: 0.568 },
+    { symbol: "BNB", basePrice: 309.09 },
+    { symbol: "SOL", basePrice: 102.07 },
+    { symbol: "DOGE", basePrice: 0.08053 },
+    { symbol: "TRX", basePrice: 0.1083 },
+    { symbol: "ADA", basePrice: 0.5278 },
+    { symbol: "SUI", basePrice: 1.292 },
+    { symbol: "AVAX", basePrice: 36.03 },
+  ],
+} as const;
 
 export function registerIndexRoutes(app: Hono): void {
   app.get("/api/index", async c => {
@@ -32,6 +52,42 @@ export function registerIndexRoutes(app: Hono): void {
     const l = values.slice();
     const v = new Array(values.length).fill(0);
     return c.json({ s: "ok", t, c: values, o, h, l, v, symbol });
+  });
+
+  // Equal-weight average latest price across configured assets
+  app.get("/api/indexavg", async c => {
+    const cfg = loadAppConfig();
+    const assets = cfg.assetConfigFilePath ? loadAssetsFromConfigFile(cfg.assetConfigFilePath) : loadAssetsFromEnv();
+    if (assets.length === 0) return c.json({ message: "no assets configured" }, 400);
+    const symbols = assets.map(a => a.symbol);
+    // fetch latest price per symbol
+    const rows = await prisma.$queryRawUnsafe<Array<{ symbol: string; price: string }>>(
+      `
+      SELECT DISTINCT ON (symbol) symbol, price
+      FROM "Price"
+      WHERE symbol = ANY($1)
+      ORDER BY symbol, "priceTimestamp" DESC
+      `,
+      symbols
+    );
+    const latestBySymbol = new Map<string, number>();
+    for (const r of rows) latestBySymbol.set(r.symbol, Number(r.price));
+
+    // Build base price map
+    const basePriceMap = new Map<string, number>(baseDayData.assets.map(a => [a.symbol, a.basePrice]));
+    // Only consider assets we have both a latest price and a base price for
+    const present = symbols.filter(s => latestBySymbol.has(s) && basePriceMap.has(s));
+    if (present.length === 0) return c.json({ message: "no prices available" }, 404);
+
+    // Sum of ratios current/base
+    const sumOfRatios = present.reduce((sum, sym) => {
+      const current = latestBySymbol.get(sym) as number;
+      const base = basePriceMap.get(sym) as number;
+      return sum + current / base;
+    }, 0);
+    // Equal-weight index normalized to 100 at base day
+    const avg = 100 * (sumOfRatios / baseDayData.assets.length);
+    return c.json({ avg, baseDay: baseDayData, symbols: present, count: present.length });
   });
 }
 

@@ -218,6 +218,72 @@ export function createOpenApiSpec(options: OpenApiOptions = {}) {
         },
       },
     };
+
+    (paths as any)["/api/indexavg"] = {
+      get: {
+        summary: "Get equal-weight average latest price across assets",
+        responses: {
+          "200": {
+            description: "Average across available symbols",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    avg: { type: "number" },
+                    baseDay: {
+                      type: "object",
+                      properties: {
+                        sumOfRatios: { type: "number" },
+                        assets: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              symbol: { type: "string" },
+                              basePrice: { type: "number" },
+                            },
+                            required: ["symbol", "basePrice"],
+                          },
+                        },
+                      },
+                      required: ["sumOfRatios", "assets"],
+                    },
+                    symbols: { type: "array", items: { type: "string" } },
+                    count: { type: "integer" },
+                  },
+                  required: ["avg", "baseDay", "symbols", "count"],
+                },
+              },
+            },
+          },
+          "400": {
+            description: "No assets configured",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { message: { type: "string" } },
+                  required: ["message"],
+                },
+              },
+            },
+          },
+          "404": {
+            description: "No prices available",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { message: { type: "string" } },
+                  required: ["message"],
+                },
+              },
+            },
+          },
+        },
+      },
+    };
   }
 
   return {
