@@ -3,7 +3,7 @@ import path from "path";
 import { assetConfigFileSchema, assetInputSchema, type AssetInput, type AssetConfigFile } from "../types";
 // Import the bundled JSON so it is available in Cloudflare Workers (no filesystem)
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import bundledAssetConfigJson from "../../assets.config.json";
+import bundledAssetConfigJson from "../assets.json";
 
 export function loadAssetsFromConfigFile(configFilePath: string): AssetInput[] {
   const resolved = path.resolve(process.cwd(), configFilePath);

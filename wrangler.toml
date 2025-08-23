@@ -8,6 +8,6 @@ enabled = true
 
 [vars]
 NODE_ENV = "production"
-ASSET_CONFIG_FILE = "assets.config.json"
+ASSET_CONFIG_FILE = "assets.json"
 
 

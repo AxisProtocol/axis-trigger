@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { computeIndexSeries, SUPPORTED_RESOLUTIONS, loadAssetFreeFloats } from "../services/indexSeries";
 import type { Resolution } from "../services/indexSeries";
 import { loadAppConfig } from "../config";
-import { loadAssetsFromConfigFile, loadAssetsFromEnv } from "../providers/envAssets";
+import { loadAssetsFromConfigFile, loadAssetsFromEnv, loadAssetsFromBundledConfig } from "../providers/envAssets";
 import { prisma } from "../db/client";
 
 // Base day reference prices for equal-weight index computation
@@ -57,7 +57,7 @@ export function registerIndexRoutes(app: Hono): void {
   // Equal-weight average latest price across configured assets
   app.get("/api/avgindexprice", async c => {
     const cfg = loadAppConfig();
-    const assets = cfg.assetConfigFilePath ? loadAssetsFromConfigFile(cfg.assetConfigFilePath) : loadAssetsFromEnv();
+    const assets = cfg.assetConfigFilePath ? loadAssetsFromBundledConfig() : loadAssetsFromEnv();
     if (assets.length === 0) return c.json({ message: "no assets configured" }, 400);
     const symbols = assets.map(a => a.symbol);
     // fetch latest price per symbol
@@ -93,7 +93,7 @@ export function registerIndexRoutes(app: Hono): void {
   // FAMC index price normalized to earliest DB prices per symbol
   app.get("/api/famcindexprice", async c => {
     const cfg = loadAppConfig();
-    const assets = cfg.assetConfigFilePath ? loadAssetsFromConfigFile(cfg.assetConfigFilePath) : loadAssetsFromEnv();
+    const assets = cfg.assetConfigFilePath ? loadAssetsFromBundledConfig() : loadAssetsFromEnv();
     if (assets.length === 0) return c.json({ message: "no assets configured" }, 400);
 
     const { freeFloatBySymbol } = await loadAssetFreeFloats();

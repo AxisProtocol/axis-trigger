@@ -1,6 +1,6 @@
 import { prisma } from "../db/client";
 import { loadAppConfig } from "../config";
-import { loadAssetsFromConfigFile, loadAssetsFromEnv } from "../providers/envAssets";
+import { loadAssetsFromConfigFile, loadAssetsFromEnv, loadAssetsFromBundledConfig } from "../providers/envAssets";
 import { computeFreeFloat } from "../calc/famc";
 
 export type Resolution = "1" | "5" | "15" | "60" | "240" | "D";
@@ -27,7 +27,7 @@ function toBucketStart(unixSec: number, intervalSec: number): number {
 export async function loadAssetFreeFloats(): Promise<{ symbols: string[]; freeFloatBySymbol: Map<string, number>; }>
 {
   const cfg = loadAppConfig();
-  const assets = cfg.assetConfigFilePath ? loadAssetsFromConfigFile(cfg.assetConfigFilePath) : loadAssetsFromEnv();
+  const assets = cfg.assetConfigFilePath ? loadAssetsFromBundledConfig() : loadAssetsFromEnv();
   const freeFloatBySymbol = new Map<string, number>();
   for (const a of assets) {
     const { freeFloat } = computeFreeFloat(a);
