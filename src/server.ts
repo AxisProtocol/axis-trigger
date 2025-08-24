@@ -1,15 +1,10 @@
-import dotenv from "dotenv";
-dotenv.config();
-
 import { swaggerUI } from "@hono/swagger-ui";
-import { serve } from "@hono/node-server";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { prettyJSON } from "hono/pretty-json";
 import { cors } from "hono/cors";
-import type { Context, Next } from "hono";
-import { prisma } from "./db/client";
 import type { PrismaLike } from "./db/types";
 import { api } from "./routes";
+import { createPrisma } from "./db/edgeClient";
 
 const openapi_documentation_route = "/openapi.json";
 const app = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().doc(openapi_documentation_route, {
@@ -31,20 +26,18 @@ app
   }))
   .get("/docs", swaggerUI({ url: openapi_documentation_route }))
   .use(prettyJSON())
-  // Inject singleton Prisma for Node server
-  .use("/*", async (c: Context, next: Next) => {
+  // Inject per-request Prisma for Workers (cf:dev)
+  .use("/*", async (c, next) => {
+    const env = ((c as any).env as { DATABASE_URL?: string }) || {};
+    const prisma = createPrisma({ DATABASE_URL: String(env.DATABASE_URL) });
     (c as any).set("prisma", prisma as unknown as PrismaLike);
-    await next();
+    try {
+      await next();
+    } finally {
+      try { await (prisma as any).$disconnect?.(); } catch {}
+    }
   })
   .route("/", api);
 
-const port = 8081;
-// eslint-disable-next-line no-console
-console.log(`Server is running on port ${port}, open http://localhost:${port}/docs to see the documentation`);
-
-serve({
-  fetch: app.fetch,
-  port,
-});
-
+export default app;
 
