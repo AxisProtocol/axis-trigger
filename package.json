@@ -16,6 +16,7 @@
     "db:push": "prisma db push",
     "backfill:prices": "ts-node src/scripts/backfillPrices.ts",
     "assets:update": "ts-node src/scripts/updateAssetsFromCG.ts",
+    "assets:update:bq": "ts-node src/scripts/updateAssetsFromBitquery.ts",
     "dev": "pnpm build && pnpm dlx wrangler dev --port 8788",
     "deploy": "pnpm build && pnpm dlx wrangler deploy --minify",
     "postinstall": "pnpm run prisma:generate"

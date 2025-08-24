@@ -20,43 +20,135 @@ export interface FreeFloatResult extends Required<TokenSupplyBreakdown> {
   asOf: string;
 }
 
-// NOTE: Bitquery has many datasets. Here we define narrow, composable queries.
+// NOTE: Bitquery has many datasets. We use flexible queries to sum balances either by explicit
+// address lists or by owner labels (annotations). Exact field names can vary across networks,
+// but GraphQL strings are opaque to TypeScript and safe to compile. See docs:
+// https://docs.bitquery.io/v1/docs/intro
 
-const ERC20_SUPPLY_QUERY = /* GraphQL */ `
-  query TokenSupply($network: EthereumNetwork!, $address: String!) {
-    ethereum(network: $network) {
-      address(address: {is: $address}) {
-        annotation
-      }
-      transfers(currency: {is: $address}) {
-        amount
+// Attempt to fetch total/circulating supply from token metadata where available.
+export async function fetchCirculatingSupply(client: BitqueryClient, token: TokenIdentity): Promise<number | undefined> {
+  const query = /* GraphQL */ `
+    query TokenMeta($network: EthereumNetwork!, $token: String!) {
+      ethereum(network: $network) {
+        smartContract(address: {is: $token}) {
+          currency {
+            symbol
+            decimals
+            totalSupply
+            circulatingSupply
+          }
+        }
       }
     }
+  `;
+  try {
+    const data = await client.query<any>(query, { network: token.chain as any, token: token.address });
+    const c = data?.ethereum?.smartContract?.[0]?.currency;
+    if (!c) return undefined;
+    const val = c.circulatingSupply ?? c.totalSupply;
+    if (typeof val === "number") return val;
+    if (typeof val === "string") return Number(val);
+    return undefined;
+  } catch {
+    return undefined;
   }
-`;
-
-// Placeholder: In practice you will use the appropriate Bitquery dataset for balances by owner labels
-// such as team, foundation, vesting contracts, and exchange custody wallets.
-
-export async function fetchCirculatingSupply(_: BitqueryClient, __: TokenIdentity): Promise<number | undefined> {
-  // Implement a proper query once exact Bitquery dataset fields are finalized.
-  return undefined;
 }
 
-export async function fetchFoundationHoldings(_: BitqueryClient, __: TokenIdentity): Promise<number | undefined> {
-  return undefined;
+async function sumBalancesByAddresses(client: BitqueryClient, token: TokenIdentity, owners: string[]): Promise<number> {
+  if (!owners.length) return 0;
+  const query = /* GraphQL */ `
+    query BalancesByOwners($network: EthereumNetwork!, $token: String!, $owners: [String!]) {
+      ethereum(network: $network) {
+        address(address: {in: $owners}) {
+          address
+          annotation
+          balances(currency: {is: $token}) {
+            value
+          }
+        }
+      }
+    }
+  `;
+  try {
+    const data = await client.query<any>(query, { network: token.chain as any, token: token.address, owners });
+    const rows = data?.ethereum?.address ?? [];
+    let sum = 0;
+    for (const row of rows) {
+      const bal = row?.balances?.[0]?.value;
+      if (typeof bal === "number") sum += bal;
+      else if (typeof bal === "string") sum += Number(bal);
+    }
+    return sum;
+  } catch {
+    return 0;
+  }
 }
 
-export async function fetchLockedSupply(_: BitqueryClient, __: TokenIdentity): Promise<number | undefined> {
-  return undefined;
+async function sumBalancesByLabels(client: BitqueryClient, token: TokenIdentity, labels: string[]): Promise<number> {
+  if (!labels.length) return 0;
+  const query = /* GraphQL */ `
+    query BalancesByLabels($network: EthereumNetwork!, $token: String!, $labels: [String!]) {
+      ethereum(network: $network) {
+        address(annotation: {in: $labels}) {
+          address
+          annotation
+          balances(currency: {is: $token}) {
+            value
+          }
+        }
+      }
+    }
+  `;
+  try {
+    const data = await client.query<any>(query, { network: token.chain as any, token: token.address, labels });
+    const rows = data?.ethereum?.address ?? [];
+    let sum = 0;
+    for (const row of rows) {
+      const bal = row?.balances?.[0]?.value;
+      if (typeof bal === "number") sum += bal;
+      else if (typeof bal === "string") sum += Number(bal);
+    }
+    return sum;
+  } catch {
+    return 0;
+  }
 }
 
-export async function fetchHeavilyVestedStaked(_: BitqueryClient, __: TokenIdentity): Promise<number | undefined> {
-  return undefined;
+function parseListEnv(key: string): string[] {
+  const raw = process.env[key] || "";
+  return raw.split(",").map(s => s.trim()).filter(Boolean);
 }
 
-export async function fetchExchangeCustodyHoldings(_: BitqueryClient, __: TokenIdentity): Promise<number | undefined> {
-  return undefined;
+export async function fetchFoundationHoldings(client: BitqueryClient, token: TokenIdentity): Promise<number | undefined> {
+  const owners = parseListEnv("BITQUERY_FOUNDATION_ADDRESSES");
+  const labels = parseListEnv("BITQUERY_FOUNDATION_LABELS");
+  const byOwners = await sumBalancesByAddresses(client, token, owners);
+  const byLabels = await sumBalancesByLabels(client, token, labels);
+  return byOwners + byLabels;
+}
+
+export async function fetchLockedSupply(client: BitqueryClient, token: TokenIdentity): Promise<number | undefined> {
+  const owners = parseListEnv("BITQUERY_LOCKED_ADDRESSES");
+  const labels = parseListEnv("BITQUERY_LOCKED_LABELS");
+  const byOwners = await sumBalancesByAddresses(client, token, owners);
+  const byLabels = await sumBalancesByLabels(client, token, labels);
+  return byOwners + byLabels;
+}
+
+export async function fetchHeavilyVestedStaked(client: BitqueryClient, token: TokenIdentity): Promise<number | undefined> {
+  const owners = parseListEnv("BITQUERY_VESTED_ADDRESSES");
+  const labels = parseListEnv("BITQUERY_VESTED_LABELS");
+  const byOwners = await sumBalancesByAddresses(client, token, owners);
+  const byLabels = await sumBalancesByLabels(client, token, labels);
+  return byOwners + byLabels;
+}
+
+export async function fetchExchangeCustodyHoldings(client: BitqueryClient, token: TokenIdentity): Promise<number | undefined> {
+  const owners = parseListEnv("BITQUERY_EXCHANGE_ADDRESSES");
+  const labels = parseListEnv("BITQUERY_EXCHANGE_LABELS");
+  const byOwners = await sumBalancesByAddresses(client, token, owners);
+  const byLabels = await sumBalancesByLabels(client, token, labels);
+  return byOwners + byLabels;
 }
 
 export function computeFreeFloat(breakdown: TokenSupplyBreakdown): FreeFloatResult {
