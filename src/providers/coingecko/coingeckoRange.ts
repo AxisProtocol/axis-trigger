@@ -1,4 +1,3 @@
-import { fetch } from "undici";
 import { getCoinGeckoHeaders, getCoinGeckoBaseUrl } from "./cgHeaders";
 
 interface MarketChartRangeResponse {

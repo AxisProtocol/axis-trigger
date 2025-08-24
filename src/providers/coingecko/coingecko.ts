@@ -1,4 +1,3 @@
-import { fetch } from "undici";
 import { type AssetInput, type PriceQuote } from "../../types";
 import { getCoinGeckoHeaders, getCoinGeckoBaseUrl } from "./cgHeaders";
 

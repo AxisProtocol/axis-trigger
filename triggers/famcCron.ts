@@ -13,7 +13,7 @@ export const famcCron = schedules.task({
     return cfg.cronSchedule;
   })(),
   run: async () => {
-    const endpoint = process.env.UPDATE_ENDPOINT_URL || "http://localhost:8789/api/update";
+    const endpoint = process.env.UPDATE_ENDPOINT_URL || "http://localhost:8788/api/update";
     const accessKey = process.env.UPDATE_ACCESS_KEY || "";
     if (!accessKey) {
       throw new Error("Missing UPDATE_ACCESS_KEY environment variable");

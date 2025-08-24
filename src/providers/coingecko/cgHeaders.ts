@@ -17,6 +17,7 @@ export function getCoinGeckoBaseUrl(): string {
   const override = process.env.COINGECKO_BASE_URL;
   if (override) return override;
   const usePro = !!process.env.COINGECKO_PRO_API_KEY || process.env.COINGECKO_USE_PRO === "true";
-  return usePro ? "https://pro-api.coingecko.com/api/v3" : "https://api.coingecko.com/api/v3";
+  const base = usePro ? "https://pro-api.coingecko.com" : "https://api.coingecko.com";
+  return `${base}/api/v3`;
 }
 
