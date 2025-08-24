@@ -34,7 +34,7 @@
     "dotenv": "^16.4.5",
     "hono": "^4.9.4",
     "undici": "^6.19.8",
-    "zod": "^4.1.0"
+    "zod": "^4"
   },
   "devDependencies": {
     "@neondatabase/serverless": "^1.0.1",

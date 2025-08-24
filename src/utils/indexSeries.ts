@@ -1,7 +1,7 @@
 import type { PrismaLike } from "../db/types";
 import { loadAppConfig } from "../config";
 import { loadAssetsFromConfigFile, loadAssetsFromEnv, loadAssetsFromBundledConfig } from "../providers/envAssets";
-import { computeFreeFloat } from "../utils/famc";
+import { computeFreeFloat } from "./famc";
 
 export type Resolution = "1" | "5" | "15" | "60" | "240" | "D";
 

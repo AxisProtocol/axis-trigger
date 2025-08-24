@@ -36,7 +36,7 @@ importers:
         specifier: ^6.19.8
         version: 6.21.3
       zod:
-        specifier: ^4.1.0
+        specifier: ^4
         version: 4.1.0
     devDependencies:
       '@neondatabase/serverless':
