@@ -116,7 +116,7 @@ See `prisma/schema.prisma` for full details.
 START_DATE=2024-08-01 pnpm backfill:prices
 ```
 
-- Scheduled task automatically backfills gaps and inserts latest prices (via Trigger.dev). API keys are read from env and headers set in `src/providers/prices/cgHeaders.ts`.
+- Scheduled task automatically backfills gaps and inserts latest prices (via Trigger.dev). API keys are read from env and headers set in `src/providers/coingecko/cgHeaders.ts`.
 
 Env keys supported:
 - `COINGECKO_PRO_API_KEY` or `COINGECKO_API_KEY` (alias `X_CG_API_KEY`)

@@ -4,7 +4,7 @@ dotenv.config();
 import fs from "fs";
 import path from "path";
 import { prisma } from "../db/client";
-import { getCoinGeckoBaseUrl, getCoinGeckoHeaders } from "../providers/prices/cgHeaders";
+import { getCoinGeckoBaseUrl, getCoinGeckoHeaders } from "../providers/coingecko/cgHeaders";
 
 interface CoinDetailResponse {
   id: string;

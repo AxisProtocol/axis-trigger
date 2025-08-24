@@ -1,8 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { loadAppConfig } from "../../config";
 import { loadAssetsFromConfigFile, loadAssetsFromEnv } from "../../providers/envAssets";
-import { fetchCoinGeckoRangeUSD } from "../../providers/prices/coingeckoRange";
-import { fetchCoinGeckoPrices } from "../../providers/prices/coingecko";
+import { fetchCoinGeckoRangeUSD } from "../../providers/coingecko/coingeckoRange";
+import { fetchCoinGeckoPrices } from "../../providers/coingecko/coingecko";
 import { computeFAMC } from "../../utils/famc";
 import type { PrismaLike } from "../../db/types";
 
