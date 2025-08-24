@@ -27,13 +27,14 @@
   "dependencies": {
     "@hono/node-server": "^1.19.0",
     "@hono/swagger-ui": "^0.5.2",
+    "@hono/zod-openapi": "^1.1.0",
     "@prisma/client": "^6.14.0",
     "@prisma/extension-accelerate": "^2.0.2",
     "@trigger.dev/sdk": "4.0.1",
     "dotenv": "^16.4.5",
     "hono": "^4.9.4",
     "undici": "^6.19.8",
-    "zod": "^3.23.8"
+    "zod": "^4.1.0"
   },
   "devDependencies": {
     "@neondatabase/serverless": "^1.0.1",
