@@ -38,7 +38,7 @@ pnpm db:push
 
 ```bash
 pnpm dev
-# http://localhost:8789/docs
+# http://localhost:8788/docs
 ```
 
 ---
@@ -47,7 +47,7 @@ pnpm dev
 
 ### オプションA: JSON ファイル（Workers で推奨）
 
-`ASSET_CONFIG_FILE=assets.config.json` を設定し、ファイルをリポジトリに含めます。例:
+`src/assets.json` をリポジトリに含め、`ASSET_CONFIG_FILE=assets.json` を設定します（Workers でもバンドル可）。例:
 
 ```json
 {
@@ -65,7 +65,7 @@ pnpm dev
 }
 ```
 
-初期ファイル生成と DB 反映:
+初期ファイル生成と DB 反映（`src/assets.json` を生成し、Prisma の `Asset` を upsert）:
 
 ```bash
 pnpm assets:update
@@ -117,14 +117,21 @@ START_DATE=2024-08-01 pnpm backfill:prices
 
 ## API 概要
 
-OpenAPI 3.1 ドキュメント: `/docs`, `/swagger.json`, `/openapi.json`
+OpenAPI 3.1 ドキュメント: `/docs`, `/openapi.json`
 
+エンドポイント:
 - `GET /` ヘルスチェック
-- `GET /api/assets` 設定済み資産一覧
 - `GET /api/famc` FAMC インデックス（終値のみ時系列）
-  - クエリ: `from`(unix), `to`(unix), `resolution` 〈1,5,15,60,240,D〉
-- `GET /api/avgindexprice` 等ウェイト平均インデックス（基準日に正規化）
+  - クエリ: `from`(unix秒, 任意, 既定 過去7日), `to`(unix秒, 任意, 既定 現在), `resolution` 〈1,5,15,60,240,D〉（既定 60）
+  - レスポンス: `{ t: number[]; value: number[]; resolution: "..." }`
+- `GET /api/avgindexprice` 等ウェイト平均インデックス（固定の基準日に正規化）
+  - レスポンス: `{ avg; baseDay; symbols; count }`
 - `GET /api/famcindexprice` 最古データを基準とした FAMC インデックス
+  - レスポンス: `{ indexPrice; baseDate?; baseIndex; currentIndex; symbols; count }`
+- `POST /api/update` 直近の価格を CoinGecko から取得・挿入し、FAMC 合計のサマリを返却
+  - ヘッダー: `x-update-key: <UPDATE_ACCESS_KEY>`
+  - 環境変数: `CRON_BACKFILL_DAYS` 既定 7
+  - レスポンス: `{ ok: true; famcSum; assets; runAt }`
 
 TradingView UDF（サブセット）:
 - `GET /tv/config`
@@ -153,7 +160,7 @@ pnpm trigger:deploy
 
 ## Cloudflare Workers
 
-`wrangler.toml` は `src/worker.ts` をエントリとして `nodejs_compat` を有効化しています。
+`wrangler.toml` は `src/server.ts` をエントリとして `nodejs_compat` を有効化しています。
 
 ```bash
 pnpm cf:dev    # http://localhost:8788
@@ -168,7 +175,7 @@ pnpm cf:deploy
 
 コア:
 - `DATABASE_URL`
-- `ASSET_CONFIG_FILE` または `ASSETS` と各シンボルの値
+- `ASSET_CONFIG_FILE`（例: `assets.json`）または `ASSETS` と各シンボルの値
 
 スケジュール:
 - `CRON_SCHEDULE`（既定 `0 * * * *`）
@@ -180,8 +187,8 @@ CoinGecko:
 - `COINGECKO_BASE_URL`（任意）
 - `CG_RANGE_MAX_DAYS`（既定 30）
 
-サーバー:
-- `PORT`（ローカル開発、既定 8789）
+セキュリティ:
+- `UPDATE_ACCESS_KEY`（`POST /api/update` 用ヘッダー `x-update-key`）
 
 ---
 

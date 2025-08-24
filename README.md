@@ -34,11 +34,11 @@ pnpm prisma:generate
 pnpm db:push
 ```
 
-4) Run locally with Node server (OpenAPI at /docs)
+4) Run locally with Wrangler (OpenAPI at /docs)
 
 ```bash
 pnpm dev
-# http://localhost:8789/docs
+# http://localhost:8788/docs
 ```
 
 ---
@@ -49,7 +49,7 @@ You can configure assets either via a bundled JSON file or environment variables
 
 ### Option A: JSON file (recommended for Workers)
 
-Set `ASSET_CONFIG_FILE=assets.config.json` and commit the file so it can be bundled. Example shape:
+Commit `src/assets.json` and set `ASSET_CONFIG_FILE=assets.json` so it can be bundled on Workers. Example shape:
 
 ```json
 {
@@ -67,7 +67,7 @@ Set `ASSET_CONFIG_FILE=assets.config.json` and commit the file so it can be bund
 }
 ```
 
-Generate a starter file from CoinGecko and upsert DB assets:
+Generate a starter file from CoinGecko and upsert DB assets (writes `src/assets.json` and syncs Prisma rows):
 
 ```bash
 pnpm assets:update
@@ -127,14 +127,21 @@ Env keys supported:
 
 ## API
 
-The server exposes OpenAPI 3.1 docs at `/docs`, `/swagger.json`, `/openapi.json`.
+The server exposes OpenAPI 3.1 docs at `/docs` and `/openapi.json`.
 
+Endpoints:
 - `GET /` health
-- `GET /api/assets` list configured assets and symbols
 - `GET /api/famc` close‑only FAMC index series
-  - Query: `from` (unix), `to` (unix), `resolution` one of `1,5,15,60,240,D`
-- `GET /api/avgindexprice` equal‑weight index (normalized to base day)
-- `GET /api/famcindexprice` FAMC index normalized to earliest DB baseline
+  - Query: `from` (unix seconds, optional; default now−7d), `to` (unix seconds, optional; default now), `resolution` one of `1,5,15,60,240,D` (default `60`)
+  - Response: `{ t: number[]; value: number[]; resolution: "..." }`
+- `GET /api/avgindexprice` equal‑weight index normalized to a fixed base day
+  - Response: `{ avg: number; baseDay: { sumOfRatios; assets: [{ symbol; basePrice }] }; symbols: string[]; count: number }`
+- `GET /api/famcindexprice` FAMC index normalized to earliest DB baseline per symbol
+  - Response: `{ indexPrice: number; baseDate?: string; baseIndex: number; currentIndex: number; symbols: string[]; count: number }`
+- `POST /api/update` backfills recent prices from CoinGecko and returns a summary
+  - Header: `x-update-key: <UPDATE_ACCESS_KEY>`
+  - Env: `CRON_BACKFILL_DAYS` controls lookback window (default 7)
+  - Response: `{ ok: true; famcSum: number; assets: number; runAt: string }`
 
 TradingView UDF subset:
 - `GET /tv/config`
@@ -163,7 +170,7 @@ Ensure `TRIGGER_PROJECT_REF` is set. See `trigger.config.ts` and `trigger.ts`.
 
 ## Cloudflare Workers
 
-`wrangler.toml` points to `src/worker.ts` with `nodejs_compat` enabled. Example commands:
+`wrangler.toml` points to `src/server.ts` with `nodejs_compat` enabled. Example commands:
 
 ```bash
 pnpm cf:dev    # local worker (http://localhost:8788)
@@ -178,7 +185,7 @@ Set `[vars]` in `wrangler.toml` or account‑level secrets (e.g., `DATABASE_URL`
 
 Core:
 - `DATABASE_URL` PostgreSQL connection string
-- `ASSET_CONFIG_FILE` path to bundled JSON (e.g., assets.config.json)
+- `ASSET_CONFIG_FILE` path to bundled JSON (e.g., assets.json)
 - `ASSETS` and per‑symbol vars (see above) if not using JSON
 
 Scheduling:
@@ -191,8 +198,8 @@ CoinGecko:
 - `COINGECKO_BASE_URL` optional
 - `CG_RANGE_MAX_DAYS` default `30`
 
-Server:
-- `PORT` for local dev server (default 8789)
+Security:
+- `UPDATE_ACCESS_KEY` required to call `POST /api/update` (passed via `x-update-key` header)
 
 ---
 
@@ -212,6 +219,46 @@ pnpm prisma:migrate
 ```
 
 ---
+
+## Local testing
+
+End-to-end test flow:
+
+1) Prepare env and DB
+
+```bash
+cp .example.env .env
+pnpm install
+pnpm db:push
+```
+
+2) Seed assets and prices
+
+```bash
+# Option A: generate src/assets.json from CoinGecko and upsert Asset rows
+pnpm assets:update
+
+# Option B: use env-defined assets by setting ASSETS and per-symbol vars in .env
+
+# Backfill historical prices from a date
+START_DATE=2024-08-01 pnpm backfill:prices
+```
+
+3) Run the server and test endpoints
+
+```bash
+pnpm dev # serves http://localhost:8788
+
+curl http://localhost:8788/docs
+curl "http://localhost:8788/api/famc?resolution=60"
+curl http://localhost:8788/api/avgindexprice
+curl http://localhost:8788/api/famcindexprice
+
+# Update task (requires UPDATE_ACCESS_KEY)
+curl -X POST \
+  -H "x-update-key: $UPDATE_ACCESS_KEY" \
+  http://localhost:8788/api/update
+```
 
 ## License
 
