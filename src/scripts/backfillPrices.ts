@@ -3,7 +3,7 @@ dotenv.config();
 
 import { prisma } from "../db/client";
 import { loadAppConfig } from "../config";
-import { loadAssetsFromConfigFile, loadAssetsFromEnv } from "../providers/envAssets";
+import { loadAssetsFromConfigFile, loadAssetsFromEnv, loadAssetsFromBundledConfig } from "../providers/envAssets";
 import { fetchCoinGeckoRangeUSD } from "../providers/coingecko/coingeckoRange";
 import { loadAssetFreeFloats } from "../utils/indexSeries";
 
@@ -21,7 +21,8 @@ async function main(): Promise<void> {
   const endDate = new Date();
 
   const cfg = loadAppConfig();
-  const assets = cfg.assetConfigFilePath ? loadAssetsFromConfigFile(cfg.assetConfigFilePath) : loadAssetsFromEnv();
+  // Use bundled config when a file is specified to support serverless/bundled runtime
+  const assets = cfg.assetConfigFilePath ? loadAssetsFromBundledConfig() : loadAssetsFromEnv();
 
   const fromUnix = Math.floor(startDate.getTime() / 1000);
   const toUnix = Math.floor(endDate.getTime() / 1000);
