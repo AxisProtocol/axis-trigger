@@ -145,4 +145,7 @@ build
 # Trigger.dev
 .trigger.dev/
 .trigger
+
+# Cloudflare
+.wrangler
 # End of https://www.toptal.com/developers/gitignore/api/node
