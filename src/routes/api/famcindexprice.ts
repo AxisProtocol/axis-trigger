@@ -99,7 +99,7 @@ export const famcindexprice = new OpenAPIHono<{ Variables: { prisma: PrismaLike 
     }
     baseDateIso = minTs.toISOString();
   }
-  return c.json({ indexPrice, baseDate: baseDateIso, baseIndex, currentIndex, symbols: present, count: present.length, aa: latestRows }) as any;
+  return c.json({ indexPrice, baseDate: baseDateIso, baseIndex, currentIndex, symbols: present, count: present.length }) as any;
 });
 
 
