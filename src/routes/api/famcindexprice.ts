@@ -34,32 +34,45 @@ export const famcindexprice = new OpenAPIHono<{ Variables: { prisma: PrismaLike 
   const symbols = assets.map(a => a.symbol);
   const prisma = (c.get("prisma") as unknown) as PrismaLike;
 
-  const latestRows = await (prisma as any).$queryRawUnsafe(
-    `
-    SELECT DISTINCT ON (symbol) symbol, price
-    FROM "Price"
-    WHERE symbol = ANY($1)
-    ORDER BY symbol, "priceTimestamp" DESC
-    `,
-    symbols
-  ) as Array<{ symbol: string; price: string }>;
+  // Get latest prices for each symbol using Prisma ORM
+  const latestPrices = await Promise.all(
+    symbols.map(async (symbol) => {
+      const latest = await (prisma as any).price.findFirst({
+        where: { symbol },
+        orderBy: { priceTimestamp: 'desc' },
+        select: { symbol: true, price: true, priceTimestamp: true }
+      });
+      return latest;
+    })
+  );
+  
+  const latestRows = latestPrices.filter(Boolean);
   const latestBySymbol = new Map<string, number>();
-  for (const r of latestRows) latestBySymbol.set(r.symbol, Number(r.price));
+  console.log(`Latest rows:`, latestRows);
+  for (const r of latestRows) {
+    if (r) latestBySymbol.set(r.symbol, Number(r.price));
+  }
 
-  const baseRows = await (prisma as any).$queryRawUnsafe(
-    `
-    SELECT DISTINCT ON (symbol) symbol, price, "priceTimestamp"
-    FROM "Price"
-    WHERE symbol = ANY($1)
-    ORDER BY symbol, "priceTimestamp" ASC
-    `,
-    symbols
-  ) as Array<{ symbol: string; price: string; priceTimestamp: Date }>;
+  // Get earliest prices for each symbol using Prisma ORM
+  const basePrices = await Promise.all(
+    symbols.map(async (symbol) => {
+      const earliest = await (prisma as any).price.findFirst({
+        where: { symbol },
+        orderBy: { priceTimestamp: 'asc' },
+        select: { symbol: true, price: true, priceTimestamp: true }
+      });
+      return earliest;
+    })
+  );
+  
+  const baseRows = basePrices.filter(Boolean);
   const baseBySymbol = new Map<string, number>();
   const baseTsBySymbol = new Map<string, Date>();
   for (const r of baseRows) {
-    baseBySymbol.set(r.symbol, Number(r.price));
-    baseTsBySymbol.set(r.symbol, r.priceTimestamp);
+    if (r) {
+      baseBySymbol.set(r.symbol, Number(r.price));
+      baseTsBySymbol.set(r.symbol, r.priceTimestamp);
+    }
   }
 
   const present = symbols.filter(s => latestBySymbol.has(s) && baseBySymbol.has(s) && freeFloatBySymbol.has(s));
@@ -86,7 +99,7 @@ export const famcindexprice = new OpenAPIHono<{ Variables: { prisma: PrismaLike 
     }
     baseDateIso = minTs.toISOString();
   }
-  return c.json({ indexPrice, baseDate: baseDateIso, baseIndex, currentIndex, symbols: present, count: present.length }) as any;
+  return c.json({ indexPrice, baseDate: baseDateIso, baseIndex, currentIndex, symbols: present, count: present.length, aa: latestRows }) as any;
 });
 
 

@@ -1,14 +1,14 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { loadAppConfig } from "../../config";
-import { loadAssetsFromConfigFile, loadAssetsFromEnv, loadAssetsFromBundledConfig } from "../../providers/envAssets";
+import { loadAssetsFromEnv, loadAssetsFromBundledConfig } from "../../providers/envAssets";
 import { fetchCoinGeckoRangeUSD } from "../../providers/coingecko/coingeckoRange";
 import { loadAssetFreeFloats } from "../../utils/indexSeries";
 import type { PrismaLike } from "../../db/types";
 
 const ResponseSchema = z.object({
   ok: z.literal(true),
-  famcSum: z.number(),
-  assets: z.number().int(),
+  famcIndexInserted: z.number().int(),
+  assetPricesInserted: z.number().int(),
   runAt: z.string(),
 });
 
@@ -49,6 +49,8 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
     orderBy: { priceTimestamp: "desc" },
     select: { priceTimestamp: true, price: true }
   });
+
+  console.log(lastIndex)
   const overlapSec = 2 * 86400; // 2 days overlap to ensure we can compute k
   const fromUnix = lastIndex
     ? Math.floor(lastIndex.priceTimestamp.getTime() / 1000) - overlapSec
@@ -56,10 +58,30 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
 
   const { freeFloatBySymbol } = await loadAssetFreeFloats();
   const pricePointsBySymbol = new Map<string, { t: number; p: number; }[]>();
+  
+  // Store individual asset prices first
+  const assetPriceRows: Array<{
+    symbol: string;
+    source: string;
+    price: string;
+    priceTimestamp: string;
+  }> = [];
+  
   for (const asset of assets) {
     if (!asset.coingeckoId) continue;
     const pts = await fetchCoinGeckoRangeUSD(asset.coingeckoId, fromUnix, toUnix);
-    pricePointsBySymbol.set(asset.symbol, pts.map(p => ({ t: Math.floor(new Date(p.timestampIso).getTime() / 1000), p: p.price })));
+    const processedPts = pts.map(p => ({ t: Math.floor(new Date(p.timestampIso).getTime() / 1000), p: p.price }));
+    pricePointsBySymbol.set(asset.symbol, processedPts);
+    
+    // Add individual asset price points to be stored
+    for (const pt of pts) {
+      assetPriceRows.push({
+        symbol: asset.symbol,
+        source: "coingecko",
+        price: pt.price.toString(),
+        priceTimestamp: pt.timestampIso
+      });
+    }
   }
 
   // Build union timeline
@@ -119,6 +141,16 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
       priceTimestamp: new Date(ts * 1000).toISOString()
     }));
 
+  // Insert individual asset prices first
+  if (assetPriceRows.length > 0) {
+    const chunkSize = 500;
+    for (let i = 0; i < assetPriceRows.length; i += chunkSize) {
+      const chunk = assetPriceRows.slice(i, i + chunkSize);
+      await prisma.price.createMany?.({ data: chunk, skipDuplicates: true });
+    }
+  }
+
+  // Then insert FAMC_INDEX rows
   if (rows.length > 0) {
     const chunkSize = 500;
     for (let i = 0; i < rows.length; i += chunkSize) {
@@ -128,7 +160,12 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
   }
 
   const runAt = new Date().toISOString();
-  return c.json({ ok: true, inserted: rows.length, runAt }) as any;
+  return c.json({ 
+    ok: true, 
+    famcIndexInserted: rows.length,
+    assetPricesInserted: assetPriceRows.length,
+    runAt 
+  }) as any;
 });
 
 
