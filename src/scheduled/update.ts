@@ -27,7 +27,8 @@ export async function performUpdate(
   if (opts?.endDay && daysRequested > 0) {
     const todayUtc = new Date();
     const todayStr = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate())).toISOString().slice(0,10);
-    const safeEnd = opts.endDay > todayStr ? todayStr : opts.endDay;
+    const endPrefix = opts.endDay.slice(0, 10);
+    const safeEnd = endPrefix > todayStr ? todayStr : endPrefix;
     const endStartSec = Math.floor(new Date(`${safeEnd}T00:00:00.000Z`).getTime() / 1000);
     const startSec = endStartSec - (daysRequested - 1) * 86400;
     fromUnix = Math.max(0, startSec - overlapSec);
@@ -50,7 +51,8 @@ export async function performUpdate(
   if (opts?.endDay && daysRequested > 0) {
     const todayUtc = new Date();
     const todayStr = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate())).toISOString().slice(0,10);
-    const safeEnd = opts.endDay > todayStr ? todayStr : opts.endDay;
+    const endPrefix = opts.endDay.slice(0, 10);
+    const safeEnd = endPrefix > todayStr ? todayStr : endPrefix;
     const endStartSec = Math.floor(new Date(`${safeEnd}T00:00:00.000Z`).getTime() / 1000);
     clampTo = Math.min(toUnix, endStartSec + 86400 - 1);
     clampFrom = endStartSec - (daysRequested - 1) * 86400;

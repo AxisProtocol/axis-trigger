@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   const START_DAY = parseStartDay(process.env.START_DAY || process.argv[2]);
   const todayStr = toUtcDateString(new Date());
   const BASE_URL = process.env.BASE_URL || "http://localhost:8788"; // wrangler dev default
-  const API_PATH = process.env.API_PATH || "/api/update-famc"; // default to famc-only
+  const API_PATH = process.env.API_PATH || "/api/update"; // default to full update
   const UPDATE_KEY = process.env.UPDATE_ACCESS_KEY || process.env.X_UPDATE_KEY || process.env.UPDATE_KEY || "";
   if (!UPDATE_KEY) throw new Error("Missing UPDATE_ACCESS_KEY in env");
 
