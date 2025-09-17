@@ -56,6 +56,7 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
       const prismaBg = createPrisma({ DB: db });
       try {
         const body = await c.req.json().catch(() => ({}));
+        console.log("/api/update background body", body);
         await performUpdate(prismaBg as any, env, body);
       } catch (e) {
         console.error("Background update failed", e);
@@ -68,6 +69,7 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
   // Fallback: run inline if executionCtx or DB binding is not available
   const prisma = (c.get("prisma") as unknown) as PrismaLike as any;
   const body = await c.req.json().catch(() => ({}));
+  console.log("/api/update inline body", body);
   const result = await performUpdate(prisma, env, body);
   return c.json(result) as any;
 });

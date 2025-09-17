@@ -56,6 +56,15 @@ export async function performUpdate(
     clampFrom = endStartSec - (daysRequested - 1) * 86400;
   }
 
+  console.log("update: window", {
+    endDay: opts?.endDay || null,
+    days: daysRequested || null,
+    fromUnix,
+    toUnix,
+    clampFrom,
+    clampTo,
+  });
+
   const assetPriceRows: Array<{ symbol: string; source: string; price: string; priceTimestamp: string; }> = [];
   const assetsWithCg = assets.filter(a => !!a.coingeckoId);
   for (const asset of assetsWithCg) {
@@ -77,6 +86,11 @@ export async function performUpdate(
       sumByDayTs.set(dayTs, (sumByDayTs.get(dayTs) || 0) + ff * info.price);
       countByDayTs.set(dayTs, (countByDayTs.get(dayTs) || 0) + 1);
     }
+    console.log("update: asset stats", {
+      symbol: asset.symbol,
+      ptsFetched: pts.length,
+      daysCovered: perDayLast.size,
+    });
   }
 
   if (sumByDayTs.size === 0) {
@@ -116,8 +130,8 @@ export async function performUpdate(
 
   async function insertRows(rowsToInsert: Array<{ symbol: string; source: string; price: string; priceTimestamp: string; }>) {
     if (rowsToInsert.length === 0) return;
-    const maxParams = Number(env.D1_MAX_PARAMS || process.env.D1_MAX_PARAMS || 200);
-    const rowsPerChunk = Math.max(1, Math.floor(maxParams / 4));
+    const maxParams = Number(env.D1_MAX_PARAMS || process.env.D1_MAX_PARAMS || 100);
+    const rowsPerChunk = Math.max(1, Math.min(25, Math.floor(maxParams / 4)));
     for (let i = 0; i < rowsToInsert.length; i += rowsPerChunk) {
       const chunk = rowsToInsert.slice(i, i + rowsPerChunk);
       const placeholders = chunk.map(() => "(?, ?, ?, ?)").join(", ");
@@ -128,8 +142,24 @@ export async function performUpdate(
     }
   }
 
-  await insertRows(assetPriceRows);
+  console.log("update: aggregation", {
+    assets: assetsWithCg.length,
+    completeDays: completeDays.length,
+    k,
+  });
+
+  const insertAssetPrices = (env.INSERT_ASSET_PRICES || process.env.INSERT_ASSET_PRICES) === "true";
+  if (insertAssetPrices) {
+    await insertRows(assetPriceRows);
+  } else {
+    console.log("update: skipping asset price inserts", { count: assetPriceRows.length });
+  }
   await insertRows(rows as any);
+
+  console.log("update: inserted", {
+    assetPricesInserted: assetPriceRows.length,
+    famcIndexInserted: rows.length,
+  });
 
   const runAt = new Date().toISOString();
   return { ok: true as const, famcIndexInserted: rows.length, assetPricesInserted: assetPriceRows.length, runAt };
