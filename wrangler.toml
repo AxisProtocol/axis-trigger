@@ -10,4 +10,10 @@ enabled = true
 NODE_ENV = "production"
 ASSET_CONFIG_FILE = "assets.json"
 
+[limits]
+cpu_ms = 300_000
 
+[[d1_databases]]
+binding = "DB"
+database_name = "axis_trigger"
+database_id = "050c6983-91e7-49cc-972b-0dc1c185bbae"

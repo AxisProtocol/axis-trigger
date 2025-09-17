@@ -8,4 +8,11 @@ export type PrismaLike = {
   $disconnect?: () => Promise<void>;
 };
 
+// Helper type narrowing for handlers if needed in the future
+export type PriceRow = {
+  symbol: string;
+  price: string | number;
+  priceTimestamp: Date;
+};
+
 

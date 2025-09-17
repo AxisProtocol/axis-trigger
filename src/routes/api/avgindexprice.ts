@@ -48,14 +48,20 @@ export const avgindexprice = new OpenAPIHono<{ Variables: { prisma: PrismaLike }
   if (assets.length === 0) return c.json({ message: "no assets configured" }, 400) as any;
   const symbols = assets.map(a => a.symbol);
   const prisma = (c.get("prisma") as unknown) as PrismaLike;
+  // SQLite (D1) equivalent to get latest row per symbol
+  const placeholders = symbols.map(() => '?').join(',');
+  const sql = `
+    WITH ranked AS (
+      SELECT symbol, price, priceTimestamp,
+             ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY priceTimestamp DESC) AS rn
+      FROM Price
+      WHERE symbol IN (${placeholders})
+    )
+    SELECT symbol, price FROM ranked WHERE rn = 1
+  `;
   const rows = await (prisma as any).$queryRawUnsafe(
-    `
-    SELECT DISTINCT ON (symbol) symbol, price
-    FROM "Price"
-    WHERE symbol = ANY($1)
-    ORDER BY symbol, "priceTimestamp" DESC
-    `,
-    symbols
+    sql,
+    ...symbols
   ) as Array<{ symbol: string; price: string }>;
   const latestBySymbol = new Map<string, number>();
   for (const r of rows) latestBySymbol.set(r.symbol, Number(r.price));

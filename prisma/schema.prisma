@@ -5,31 +5,31 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
 model Price {
-  id             BigInt   @id @default(autoincrement())
+  id             Int       @id @default(autoincrement())
   symbol         String
   source         String
-  price          Decimal  @db.Decimal(20, 10)
-  priceTimestamp DateTime @db.Timestamptz(3)
+  price          Decimal
+  priceTimestamp DateTime
 
   @@index([symbol, priceTimestamp])
   @@unique([symbol, priceTimestamp, source])
 }
 
 model Asset {
-  id                       BigInt   @id @default(autoincrement())
+  id                       Int      @id @default(autoincrement())
   symbol                   String   @unique
   coingeckoId              String?
   binanceSymbol            String?
-  circulatingSupply        Decimal  @db.Decimal(38, 18)
-  foundationHoldings       Decimal  @db.Decimal(38, 18) @default(0)
-  lockedSupply             Decimal  @db.Decimal(38, 18) @default(0)
-  heavilyVestedStaked      Decimal  @db.Decimal(38, 18) @default(0)
-  exchangeCustodyHoldings  Decimal  @db.Decimal(38, 18) @default(0)
+  circulatingSupply        Decimal
+  foundationHoldings       Decimal  @default(0)
+  lockedSupply             Decimal  @default(0)
+  heavilyVestedStaked      Decimal  @default(0)
+  exchangeCustodyHoldings  Decimal  @default(0)
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 }
