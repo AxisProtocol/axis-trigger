@@ -49,16 +49,20 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
   if (!expected || headerKey !== expected) {
     return c.json({ message: "unauthorized" }, 401) as any;
   }
-  // Run update in background to avoid request CPU time limits
+  // Read body once and determine background preference
+  const body = await c.req.json().catch(() => ({} as any));
+  if (typeof body.days === "number" && body.days > 7) {
+    return c.json({ message: "days must be <= 7; use /api/update-batch for longer windows" }, 400) as any;
+  }
+  const bgParam = (c.req.query("background") || "").toLowerCase();
+  const runInline = body.background === false || bgParam === "false";
+
+  // Run update in background unless explicitly requested inline
   const db = (env as any).DB;
-  if (c.executionCtx && db) {
+  if (!runInline && c.executionCtx && db) {
     c.executionCtx.waitUntil((async () => {
       const prismaBg = createPrisma({ DB: db });
       try {
-        const body = await c.req.json().catch(() => ({}));
-        if (typeof body.days === "number" && body.days > 7) {
-          throw new Error("days must be <= 7; use /api/update-batch for longer windows");
-        }
         console.log("/api/update background body", body);
         await performUpdate(prismaBg as any, env, body);
       } catch (e) {
@@ -69,12 +73,8 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
     })());
     return c.json({ ok: true as const, accepted: true as const, runAt: new Date().toISOString() }, 202) as any;
   }
-  // Fallback: run inline if executionCtx or DB binding is not available
+  // Inline execution
   const prisma = (c.get("prisma") as unknown) as PrismaLike as any;
-  const body = await c.req.json().catch(() => ({}));
-  if (typeof body.days === "number" && body.days > 7) {
-    return c.json({ message: "days must be <= 7; use /api/update-batch for longer windows" }, 400) as any;
-  }
   console.log("/api/update inline body", body);
   const result = await performUpdate(prisma, env, body);
   return c.json(result) as any;

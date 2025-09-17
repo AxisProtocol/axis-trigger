@@ -69,6 +69,26 @@ async function main(): Promise<void> {
       throw new Error(`Update failed for chunk ${chunkIndex}: ${res.status} ${res.statusText}`);
     }
 
+    // Optionally verify via TradingView history API
+    const verifyTv = (process.env.VERIFY_TV || "true").toLowerCase() !== "false";
+    if (verifyTv) {
+      // give DB a brief moment
+      const tvDelayMs = Number(process.env.TVCHECK_DELAY_MS || 200);
+      if (tvDelayMs > 0) await sleep(tvDelayMs);
+      const fromSec = Math.floor(startDate.getTime() / 1000);
+      const toSec = Math.floor(new Date(`${endDay}T00:00:00.000Z`).getTime() / 1000) + 86400 - 1;
+      const tvUrl = `${BASE_URL}/tv/history?symbol=INDEX:FAMC&resolution=D&from=${fromSec}&to=${toSec}`;
+      try {
+        const tvRes = await fetch(tvUrl);
+        const tvText = await tvRes.text();
+        // eslint-disable-next-line no-console
+        console.log("tv/history response", { status: tvRes.status, body: tvText.slice(0, 500) });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("tv/history request failed", e);
+      }
+    }
+
     // Move cursorStart forward by span days
     const nextStart = new Date(new Date(`${cursorStart}T00:00:00.000Z`).getTime() + span * 86400000);
     cursorStart = toUtcDateString(nextStart);

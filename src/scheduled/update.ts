@@ -48,6 +48,7 @@ export async function performUpdate(
 
   let clampFrom: number | undefined = undefined;
   let clampTo: number | undefined = undefined;
+  let compFrom: number | undefined = undefined; // computation start with overlap
   if (opts?.endDay && daysRequested > 0) {
     const todayUtc = new Date();
     const todayStr = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate())).toISOString().slice(0,10);
@@ -56,6 +57,7 @@ export async function performUpdate(
     const endStartSec = Math.floor(new Date(`${safeEnd}T00:00:00.000Z`).getTime() / 1000);
     clampTo = Math.min(toUnix, endStartSec + 86400 - 1);
     clampFrom = endStartSec - (daysRequested - 1) * 86400;
+    compFrom = Math.max(0, clampFrom - overlapSec);
   }
 
   console.log("update: window", {
@@ -75,7 +77,7 @@ export async function performUpdate(
     const perDayLast: Map<number, { ts: number; iso: string; price: number }> = new Map();
     for (const pt of pts) {
       const ts = Math.floor(new Date(pt.timestampIso).getTime() / 1000);
-      if ((clampFrom !== undefined && ts < clampFrom) || (clampTo !== undefined && ts > clampTo)) continue;
+      if ((compFrom !== undefined && ts < compFrom) || (clampTo !== undefined && ts > clampTo)) continue;
       const dayTs = Math.floor(ts / 86400) * 86400;
       const existing = perDayLast.get(dayTs);
       if (!existing || ts >= existing.ts) {
@@ -84,7 +86,9 @@ export async function performUpdate(
     }
     // After collecting per-day last prices, update inserts and daily sums once per asset per day
     for (const [dayTs, info] of perDayLast.entries()) {
-      assetPriceRows.push({ symbol: asset.symbol, source: "coingecko", price: info.price.toString(), priceTimestamp: info.iso });
+      if (clampFrom === undefined || dayTs >= clampFrom) {
+        assetPriceRows.push({ symbol: asset.symbol, source: "coingecko", price: info.price.toString(), priceTimestamp: info.iso });
+      }
       sumByDayTs.set(dayTs, (sumByDayTs.get(dayTs) || 0) + ff * info.price);
       countByDayTs.set(dayTs, (countByDayTs.get(dayTs) || 0) + 1);
     }
@@ -102,15 +106,32 @@ export async function performUpdate(
   let k = 1;
   const tLast = lastIndex ? Math.floor(lastIndex.priceTimestamp.getTime() / 1000) : undefined;
   const requiredPerDay = assetsWithCg.length;
-  const completeDays = Array.from(sumByDayTs.keys()).filter(ts => (countByDayTs.get(ts) || 0) === requiredPerDay);
-  completeDays.sort((a, b) => a - b);
+  const completeDaysAll = Array.from(sumByDayTs.keys()).filter(ts => (countByDayTs.get(ts) || 0) === requiredPerDay).sort((a, b) => a - b);
+  const completeDays = completeDaysAll.filter(ts => clampFrom === undefined || ts >= clampFrom);
+  if (completeDays.length === 0) {
+    return { ok: true as const, famcIndexInserted: 0, assetPricesInserted: assetPriceRows.length, runAt: new Date().toISOString() };
+  }
   if (tLast !== undefined) {
-    const candidateTs = completeDays.filter(t => t <= tLast).sort((a, b) => b - a)[0];
-    if (candidateTs !== undefined) {
-      const s = sumByDayTs.get(candidateTs) as number;
-      const v = Number(lastIndex!.price);
-      if (s > 0) k = v / s;
-    } else {
+    let kSet = false;
+    if (clampFrom !== undefined) {
+      try {
+        const prevIndex = await (prisma as any).price.findFirst?.({
+          where: { symbol: "FAMC_INDEX", priceTimestamp: { lte: new Date(clampFrom * 1000) } },
+          orderBy: { priceTimestamp: "desc" },
+          select: { priceTimestamp: true, price: true }
+        });
+        if (prevIndex) {
+          const prevTs = Math.floor(prevIndex.priceTimestamp.getTime() / 1000);
+          const candidateTs = completeDaysAll.filter(t => t <= prevTs).sort((a, b) => b - a)[0];
+          if (candidateTs !== undefined) {
+            const s = sumByDayTs.get(candidateTs) as number;
+            const v = Number(prevIndex.price);
+            if (s > 0) { k = v / s; kSet = true; }
+          }
+        }
+      } catch {}
+    }
+    if (!kSet) {
       const firstTs = completeDays[0];
       const s0 = firstTs !== undefined ? (sumByDayTs.get(firstTs) as number) : 0;
       if (s0 > 0) k = 100 / s0;
@@ -122,7 +143,7 @@ export async function performUpdate(
   }
 
   const rows = completeDays
-    .filter(ts => tLast === undefined || ts > tLast)
+    .filter(ts => (opts?.endDay ? true : (tLast === undefined || ts > tLast)))
     .map(ts => ({
       symbol: "FAMC_INDEX",
       source: "coingecko" as const,
