@@ -20,7 +20,7 @@ app
   .use("*", cors({
     origin: (origin: string) => {
       if (!origin) return null;
-      if (origin === "https://axis-protocol.xyz" || origin === "http://axis-protocol.xyz") return origin;
+      if (/^https?:\/\/([a-z0-9-]+\.)*axis-protocol\.xyz$/i.test(origin)) return origin; // allow subdomains
       if (/^https?:\/\/localhost(?::\d+)?$/.test(origin)) return origin;
       if (/^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(origin)) return origin;
       return null;

@@ -1,6 +1,4 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { cors } from "hono/cors";
-import { prettyJSON } from "hono/pretty-json";
 import type { PrismaLike } from "../db/types";
 import { famc } from "./api/famc";
 import { avgindexprice } from "./api/avgindexprice";
@@ -12,23 +10,6 @@ import { tvSymbols } from "./tv/symbols";
 import { tvHistory } from "./tv/history";
 
 export const api = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>();
-
-api
-  .use("*", cors({
-    origin: (origin: string) => {
-      if (!origin) return null;
-      if (origin === "https://axis-protocol.xyz" || origin === "http://axis-protocol.xyz") return origin;
-      if (/^https?:\/\/localhost(?::\d+)?$/.test(origin)) return origin;
-      if (/^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(origin)) return origin;
-      return null;
-    },
-    allowHeaders: ["Content-Type", "Authorization"],
-    allowMethods: ["POST", "GET", "OPTIONS"],
-    exposeHeaders: ["Content-Length"],
-    maxAge: 600,
-    credentials: true,
-  }))
-  .use(prettyJSON());
 
 // Mount API endpoints
 api.route("/api", famc);
