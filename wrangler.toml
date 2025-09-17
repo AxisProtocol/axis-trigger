@@ -11,6 +11,7 @@ enabled = true
 NODE_ENV = "production"
 ASSET_CONFIG_FILE = "assets.json"
 CRON_BACKFILL_DAYS = "30"
+CG_CONCURRENCY= "6"
 
 [[d1_databases]]
 binding = "DB"

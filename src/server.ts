@@ -54,7 +54,8 @@ export default {
   scheduled: async (event: any, env: any, ctx: any) => {
     const prisma = createPrisma({ DB: env.DB });
     try {
-      const result = await performUpdate(prisma as any, env as any);
+      // For scheduled runs, always process the last 3 days
+      const result = await performUpdate(prisma as any, env as any, { days: 3 });
       console.log("Scheduled update result:", result);
     } finally {
       try { await (prisma as any).$disconnect?.(); } catch {}
