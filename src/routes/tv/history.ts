@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { PrismaLike } from "../../db/types";
+import { withKvCache } from "../../utils/kvCache";
 import { SUPPORTED_RESOLUTIONS } from "../../utils/indexSeries";
 
 const QuerySchema = z.object({
@@ -54,10 +55,14 @@ export const tvHistory = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>(
   const intervalSec = RES_TO_SEC[resolution as keyof typeof RES_TO_SEC];
   const famcSymbol = "FAMC_INDEX"; // stored by backfill script
 
-  const rows = await (prisma as any).price.findMany({
-    where: { symbol: famcSymbol, priceTimestamp: { gte: new Date(from * 1000), lte: new Date(to * 1000) } },
-    orderBy: { priceTimestamp: "asc" }
-  }) as Array<{ priceTimestamp: Date; price: string }>;
+  const cacheKey = `tv:history:${famcSymbol}:${resolution}:${from}:${to}`;
+  const rows = await withKvCache<Array<{ priceTimestamp: Date; price: string }>>(c, cacheKey, 30, async () => {
+    const data = await (prisma as any).price.findMany({
+      where: { symbol: famcSymbol, priceTimestamp: { gte: new Date(from * 1000), lte: new Date(to * 1000) } },
+      orderBy: { priceTimestamp: "asc" }
+    }) as Array<{ priceTimestamp: Date; price: string }>;
+    return data;
+  });
 
   const toUnixSeconds = (d: Date): number => Math.floor(d.getTime() / 1000);
   const toBucketStart = (unixSec: number, sec: number): number => Math.floor(unixSec / sec) * sec;

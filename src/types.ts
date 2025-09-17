@@ -36,8 +36,6 @@ export const assetConfigFileSchema = z.object({
 export type AssetConfigFile = z.infer<typeof assetConfigFileSchema>;
 
 export const appConfigSchema = z.object({
-  cronSchedule: z.string().min(1).default("0 * * * *"),
-  cronTimezone: z.string().min(1).optional(),
   assetConfigFilePath: z.string().optional()
 });
 

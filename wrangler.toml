@@ -2,6 +2,7 @@ name = "axis-trigger"
 main = "src/server.ts"
 compatibility_date = "2025-08-01"
 compatibility_flags = ["nodejs_compat"]
+account_id = "d637410df2e8f923e3fe6b63955a283b"
 
 [observability]
 enabled = true
@@ -9,6 +10,7 @@ enabled = true
 [vars]
 NODE_ENV = "production"
 ASSET_CONFIG_FILE = "assets.json"
+CRON_BACKFILL_DAYS = "30"
 
 [[d1_databases]]
 binding = "DB"
@@ -17,3 +19,7 @@ database_id = "df225f07-9768-4595-89a0-3823a45698cf"
 
 [triggers]
 crons = ["0 * * * *"]  # run every hour
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "28a5135943f54d82af9b227eee4fb834"

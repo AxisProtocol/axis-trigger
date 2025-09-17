@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { withKvCache } from "../../utils/kvCache";
 
 const ResponseSchema = z.string();
 
@@ -11,7 +12,8 @@ const route = createRoute({
 });
 
 export const tvTime = new OpenAPIHono().openapi(route, async (c) => {
-  return c.text(String(Math.floor(Date.now() / 1000)));
+  const now = await withKvCache<number>(c, `tv:time:now`, 2, async () => Math.floor(Date.now() / 1000));
+  return c.text(String(now));
 });
 
 

@@ -5,8 +5,6 @@ dotenv.config();
 
 export function loadAppConfig(): AppConfig {
   const parsed = appConfigSchema.safeParse({
-    cronSchedule: process.env.CRON_SCHEDULE,
-    cronTimezone: process.env.CRON_TZ,
     assetConfigFilePath: process.env.ASSET_CONFIG_FILE
   });
 

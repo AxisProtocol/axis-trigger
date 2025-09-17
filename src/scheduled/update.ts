@@ -163,6 +163,7 @@ export async function performUpdate(prisma: PrismaLike, env: Record<string, stri
   return { ok: true as const, famcIndexInserted: rows.length, assetPricesInserted: assetPriceRows.length, runAt };
 }
 
+// api route for manual update
 export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().openapi(route, async (c) => {
   const headerKey = c.req.header("x-update-key") || "";
   const env = ((c as any).env as Record<string, string | undefined>) || {};
@@ -174,5 +175,3 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
   const result = await performUpdate(prisma, env);
   return c.json(result) as any;
 });
-
-

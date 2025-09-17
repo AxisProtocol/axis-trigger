@@ -8,13 +8,10 @@
   "main": "dist/trigger.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "trigger:dev": "pnpm dlx trigger.dev@latest dev",
-    "trigger:deploy": "pnpm dlx trigger.dev@latest deploy",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "db:push": "prisma db push",
-    "backfill:prices": "ts-node src/scripts/backfillPrices.ts",
     "assets:update": "ts-node src/scripts/updateAssetsFromCG.ts",
     "assets:update:bq": "ts-node src/scripts/updateAssetsFromBitquery.ts",
     "dev": "pnpm build && pnpm dlx wrangler dev --port 8788",
@@ -36,14 +33,12 @@
     "@prisma/adapter-d1": "^6.16.2",
     "@prisma/client": "^6.16.2",
     "@prisma/extension-accelerate": "^2.0.2",
-    "@trigger.dev/sdk": "4.0.1",
     "dotenv": "^16.4.5",
     "hono": "^4.9.4",
     "undici": "^6.19.8",
     "zod": "^4"
   },
   "devDependencies": {
-    "@neondatabase/serverless": "^1.0.1",
     "@prisma/adapter-neon": "^6.16.2",
     "@types/node": "^22.7.5",
     "bufferutil": "^4.0.9",
