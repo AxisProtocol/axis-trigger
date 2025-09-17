@@ -19,7 +19,7 @@ database_name = "axis_trigger"
 database_id = "df225f07-9768-4595-89a0-3823a45698cf"
 
 [triggers]
-crons = ["0 * * * *"]  # run every hour
+crons = ["0 1 * * *"]  # run once daily at 01:00 UTC
 
 [[kv_namespaces]]
 binding = "CACHE"

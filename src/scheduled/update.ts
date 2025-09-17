@@ -7,7 +7,7 @@ import type { PrismaLike } from "../db/types";
 export async function performUpdate(
   prisma: PrismaLike,
   env: Record<string, string | undefined>,
-  opts?: { endDay?: string; days?: number }
+  opts?: { endDay?: string; days?: number; famcOnly?: boolean }
 ) {
   const cfg = loadAppConfig();
   const assets = cfg.assetConfigFilePath ? loadAssetsFromBundledConfig() : loadAssetsFromEnv();
@@ -148,7 +148,7 @@ export async function performUpdate(
     k,
   });
 
-  const insertAssetPrices = (env.INSERT_ASSET_PRICES || process.env.INSERT_ASSET_PRICES) === "true";
+  const insertAssetPrices = !opts?.famcOnly && ((env.INSERT_ASSET_PRICES || process.env.INSERT_ASSET_PRICES) === "true");
   if (insertAssetPrices) {
     await insertRows(assetPriceRows);
   } else {
