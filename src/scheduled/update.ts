@@ -23,7 +23,7 @@ export async function performUpdate(
 
   const overlapSec = 2 * 86400;
   let fromUnix: number;
-  const daysRequested = Math.min(14, Math.max(1, opts?.days ?? 0));
+  const daysRequested = Math.min(7, Math.max(1, opts?.days ?? 0));
   if (opts?.endDay && daysRequested > 0) {
     const todayUtc = new Date();
     const todayStr = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate())).toISOString().slice(0,10);

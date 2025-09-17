@@ -16,8 +16,8 @@ const UpdateBodySchema = z
   .object({
     // YYYY-MM-DD in UTC, clamped to today
     endDay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    // Max 14 days
-    days: z.number().int().positive().max(14).optional(),
+    // Max 7 days
+    days: z.number().int().positive().max(7).optional(),
   })
   .openapi({ title: "UpdateBody" });
 
@@ -56,6 +56,9 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
       const prismaBg = createPrisma({ DB: db });
       try {
         const body = await c.req.json().catch(() => ({}));
+        if (typeof body.days === "number" && body.days > 7) {
+          throw new Error("days must be <= 7; use /api/update-batch for longer windows");
+        }
         console.log("/api/update background body", body);
         await performUpdate(prismaBg as any, env, body);
       } catch (e) {
@@ -69,6 +72,9 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
   // Fallback: run inline if executionCtx or DB binding is not available
   const prisma = (c.get("prisma") as unknown) as PrismaLike as any;
   const body = await c.req.json().catch(() => ({}));
+  if (typeof body.days === "number" && body.days > 7) {
+    return c.json({ message: "days must be <= 7; use /api/update-batch for longer windows" }, 400) as any;
+  }
   console.log("/api/update inline body", body);
   const result = await performUpdate(prisma, env, body);
   return c.json(result) as any;
