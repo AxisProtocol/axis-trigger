@@ -1,6 +1,5 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
-import { swaggerUI } from "@hono/swagger-ui";
 import { prettyJSON } from "hono/pretty-json";
 import type { PrismaLike } from "../db/types";
 import { famc } from "./api/famc";
@@ -11,7 +10,6 @@ import { tvConfig } from "./tv/config";
 import { tvTime } from "./tv/time";
 import { tvSymbols } from "./tv/symbols";
 import { tvHistory } from "./tv/history";
-import { appUi } from "./app/ui";
 
 export const api = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>();
 
@@ -43,9 +41,6 @@ api.route("/tv", tvConfig);
 api.route("/tv", tvTime);
 api.route("/tv", tvSymbols);
 api.route("/tv", tvHistory);
-
-// Mount App UI
-api.route("/app", appUi);
 
 // Basic health route to mirror previous "/"
 api.get("/", c => c.json({ ok: true }));
