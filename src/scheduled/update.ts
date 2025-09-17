@@ -1,9 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { loadAppConfig } from "../../config";
-import { loadAssetsFromEnv, loadAssetsFromBundledConfig } from "../../providers/envAssets";
-import { fetchCoinGeckoRangeUSD } from "../../providers/coingecko/coingeckoRange";
-import { loadAssetFreeFloats } from "../../utils/indexSeries";
-import type { PrismaLike } from "../../db/types";
+import { loadAppConfig } from "../config";
+import { loadAssetsFromEnv, loadAssetsFromBundledConfig } from "../providers/envAssets";
+import { fetchCoinGeckoRangeUSD } from "../providers/coingecko/coingeckoRange";
+import { loadAssetFreeFloats } from "../utils/indexSeries";
+import type { PrismaLike } from "../db/types";
 
 const ResponseSchema = z.object({
   ok: z.literal(true),
@@ -26,19 +26,9 @@ const route = createRoute({
   },
 });
 
-export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().openapi(route, async (c) => {
-  const headerKey = c.req.header("x-update-key") || "";
-  const env = ((c as any).env as Record<string, string | undefined>) || {};
-  const expected = env.UPDATE_ACCESS_KEY || process.env.UPDATE_ACCESS_KEY || "";
-  if (!expected || headerKey !== expected) {
-    return c.json({ message: "unauthorized" }, 401) as any;
-  }
-
+export async function performUpdate(prisma: PrismaLike, env: Record<string, string | undefined>) {
   const cfg = loadAppConfig();
   const assets = cfg.assetConfigFilePath ? loadAssetsFromBundledConfig() : loadAssetsFromEnv();
-
-  const prisma = (c.get("prisma") as unknown) as PrismaLike as any;
-
   const nowSec = Math.floor(Date.now() / 1000);
   const defaultLookbackDays = Number(process.env.CRON_BACKFILL_DAYS || 7);
   const toUnix = nowSec;
@@ -107,7 +97,7 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
   }
 
   if (sumByTs.size === 0) {
-    return c.json({ ok: true, message: "no points" }) as any;
+    return { ok: true as const, famcIndexInserted: 0, assetPricesInserted: 0, runAt: new Date().toISOString() };
   }
 
   // Derive normalization factor k from any overlapping timestamp with existing index
@@ -141,31 +131,48 @@ export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().o
       priceTimestamp: new Date(ts * 1000).toISOString()
     }));
 
-  // Insert individual asset prices first
+  // Insert individual asset prices first (SQLite/D1: use INSERT OR IGNORE, per-row to avoid var limits)
   if (assetPriceRows.length > 0) {
-    const chunkSize = 500;
+    const chunkSize = 50; // conservative to avoid variable limits
     for (let i = 0; i < assetPriceRows.length; i += chunkSize) {
       const chunk = assetPriceRows.slice(i, i + chunkSize);
-      await prisma.price.createMany?.({ data: chunk, skipDuplicates: true });
+      for (const r of chunk) {
+        await (prisma as any).$queryRawUnsafe(
+          `INSERT OR IGNORE INTO Price (symbol, source, price, priceTimestamp) VALUES (?, ?, ?, ?)`,
+          r.symbol, r.source, r.price, r.priceTimestamp
+        );
+      }
     }
   }
 
-  // Then insert FAMC_INDEX rows
+  // Then insert FAMC_INDEX rows (SQLite/D1: use INSERT OR IGNORE per-row)
   if (rows.length > 0) {
-    const chunkSize = 500;
+    const chunkSize = 50;
     for (let i = 0; i < rows.length; i += chunkSize) {
       const chunk = rows.slice(i, i + chunkSize);
-      await prisma.price.createMany?.({ data: chunk, skipDuplicates: true });
+      for (const r of chunk) {
+        await (prisma as any).$queryRawUnsafe(
+          `INSERT OR IGNORE INTO Price (symbol, source, price, priceTimestamp) VALUES (?, ?, ?, ?)`,
+          r.symbol, r.source, r.price, r.priceTimestamp
+        );
+      }
     }
   }
 
   const runAt = new Date().toISOString();
-  return c.json({ 
-    ok: true, 
-    famcIndexInserted: rows.length,
-    assetPricesInserted: assetPriceRows.length,
-    runAt 
-  }) as any;
+  return { ok: true as const, famcIndexInserted: rows.length, assetPricesInserted: assetPriceRows.length, runAt };
+}
+
+export const update = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().openapi(route, async (c) => {
+  const headerKey = c.req.header("x-update-key") || "";
+  const env = ((c as any).env as Record<string, string | undefined>) || {};
+  const expected = env.UPDATE_ACCESS_KEY || process.env.UPDATE_ACCESS_KEY || "";
+  if (!expected || headerKey !== expected) {
+    return c.json({ message: "unauthorized" }, 401) as any;
+  }
+  const prisma = (c.get("prisma") as unknown) as PrismaLike as any;
+  const result = await performUpdate(prisma, env);
+  return c.json(result) as any;
 });
 
 

@@ -6,7 +6,7 @@ import type { PrismaLike } from "../db/types";
 import { famc } from "./api/famc";
 import { avgindexprice } from "./api/avgindexprice";
 import { famcindexprice } from "./api/famcindexprice";
-import { update } from "./api/update";
+import { update } from "../scheduled/update";
 import { tvConfig } from "./tv/config";
 import { tvTime } from "./tv/time";
 import { tvSymbols } from "./tv/symbols";
@@ -17,7 +17,13 @@ export const api = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>();
 
 api
   .use("*", cors({
-    origin: "*",
+    origin: (origin: string) => {
+      if (!origin) return null;
+      if (origin === "https://axis-protocol.xyz" || origin === "http://axis-protocol.xyz") return origin;
+      if (/^https?:\/\/localhost(?::\d+)?$/.test(origin)) return origin;
+      if (/^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(origin)) return origin;
+      return null;
+    },
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["POST", "GET", "OPTIONS"],
     exposeHeaders: ["Content-Length"],

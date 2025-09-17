@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import type { PrismaLike } from "./db/types";
 import { api } from "./routes";
 import { createPrisma } from "./db/prismaD1";
+import { performUpdate } from "./scheduled/update";
 
 const openapi_documentation_route = "/openapi.json";
 const app = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().doc(openapi_documentation_route, {
@@ -17,7 +18,13 @@ const app = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().doc(openapi
 
 app
   .use("*", cors({
-    origin: "*",
+    origin: (origin: string) => {
+      if (!origin) return null;
+      if (origin === "https://axis-protocol.xyz" || origin === "http://axis-protocol.xyz") return origin;
+      if (/^https?:\/\/localhost(?::\d+)?$/.test(origin)) return origin;
+      if (/^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(origin)) return origin;
+      return null;
+    },
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["POST", "GET", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
@@ -42,5 +49,16 @@ app
   })
   .route("/", api);
 
-export default app;
+export default {
+  fetch: app.fetch,
+  scheduled: async (event: any, env: any, ctx: any) => {
+    const prisma = createPrisma({ DB: env.DB });
+    try {
+      const result = await performUpdate(prisma as any, env as any);
+      console.log("Scheduled update result:", result);
+    } finally {
+      try { await (prisma as any).$disconnect?.(); } catch {}
+    }
+  }
+} as any;
 

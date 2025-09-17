@@ -14,6 +14,9 @@ ASSET_CONFIG_FILE = "assets.json"
 cpu_ms = 300_000
 
 [[d1_databases]]
-binding = "DB"
+binding = "DB"            # available as env.DB
 database_name = "axis_trigger"
 database_id = "050c6983-91e7-49cc-972b-0dc1c185bbae"
+
+[triggers]
+crons = ["0 * * * *"]  # run every hour
