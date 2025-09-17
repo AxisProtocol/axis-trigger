@@ -1,4 +1,4 @@
-name = "axis-trigger"
+name = "backend"
 main = "src/server.ts"
 compatibility_date = "2025-08-01"
 compatibility_flags = ["nodejs_compat"]
