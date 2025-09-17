@@ -6,7 +6,7 @@ import type { PrismaLike } from "../db/types";
 import { famc } from "./api/famc";
 import { avgindexprice } from "./api/avgindexprice";
 import { famcindexprice } from "./api/famcindexprice";
-import { update } from "../scheduled/update";
+import { update } from "./api/update";
 import { tvConfig } from "./tv/config";
 import { tvTime } from "./tv/time";
 import { tvSymbols } from "./tv/symbols";
