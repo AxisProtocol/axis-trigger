@@ -4,6 +4,7 @@ import { famc } from "./api/famc";
 import { avgindexprice } from "./api/avgindexprice";
 import { famcindexprice } from "./api/famcindexprice";
 import { update } from "./api/update";
+import { selection } from "./api/selection";
 import { tvConfig } from "./tv/config";
 import { tvTime } from "./tv/time";
 import { tvSymbols } from "./tv/symbols";
@@ -16,6 +17,7 @@ api.route("/api", famc);
 api.route("/api", avgindexprice);
 api.route("/api", famcindexprice);
 api.route("/api", update);
+api.route("/api", selection);
 
 // Mount TradingView endpoints
 api.route("/tv", tvConfig);

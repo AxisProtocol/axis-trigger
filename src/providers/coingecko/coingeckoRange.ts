@@ -38,8 +38,9 @@ export async function fetchCoinGeckoRangeUSDWithVolumes(
   const base = getCoinGeckoBaseUrl();
   const headers = getCoinGeckoHeaders();
   const maxSpanDays = Number(process.env.CG_RANGE_MAX_DAYS || 30);
-  const interval = process.env.CG_RANGE_INTERVAL || "daily";
-  const out: { timestampIso: string; price: number; volume: number; }[] = [];
+  // Free plan cannot use interval=daily; omit interval and aggregate to daily locally
+  const interval = process.env.CG_RANGE_INTERVAL || "";
+  const perDay = new Map<number, { tsMs: number; price: number; volume: number }>();
 
   let cursor = fromUnixSec;
   while (cursor <= toUnixSec) {
@@ -54,16 +55,22 @@ export async function fetchCoinGeckoRangeUSDWithVolumes(
 
     for (const [tsMs, price] of priceMap.entries()) {
       const volume = volumeMap.get(tsMs);
-      if (typeof volume === "number") {
-        out.push({ timestampIso: new Date(tsMs).toISOString(), price, volume });
+      if (typeof volume !== "number") continue;
+      const dayStartMs = Math.floor(tsMs / 86400000) * 86400000; // UTC day bucket
+      const existing = perDay.get(dayStartMs);
+      if (!existing || tsMs >= existing.tsMs) {
+        perDay.set(dayStartMs, { tsMs, price, volume });
       }
     }
     cursor = chunkEnd + 1;
   }
+  const out: { timestampIso: string; price: number; volume: number; }[] = [];
+  const sorted = Array.from(perDay.values()).sort((a, b) => a.tsMs - b.tsMs);
+  for (const row of sorted) out.push({ timestampIso: new Date(row.tsMs).toISOString(), price: row.price, volume: row.volume });
   return out;
 }
 
-async function fetchWithRetry(url: string, init: RequestInit, maxRetries = Number(process.env.CG_RETRIES || 2)) {
+async function fetchWithRetry(url: string, init: RequestInit, maxRetries = Number(process.env.CG_RETRIES || 4)) {
   let attempt = 0;
   let lastErr: any;
   while (attempt <= maxRetries) {
@@ -74,7 +81,24 @@ async function fetchWithRetry(url: string, init: RequestInit, maxRetries = Numbe
     let body = "";
     try { body = await res.text(); } catch {}
     lastErr = new Error(`CoinGecko range fetch failed: ${res.status} ${res.statusText} ${body}`);
-    const backoffMs = Math.min(2000, 200 * Math.pow(2, attempt));
+    // Respect Retry-After for 429 if present, otherwise exponential backoff with jitter
+    let backoffMs = 0;
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get("retry-after"));
+      if (Number.isFinite(retryAfter) && retryAfter > 0) {
+        backoffMs = Math.min(10000, Math.max(500, retryAfter * 1000));
+      } else {
+        backoffMs = Math.min(10000, 500 * Math.pow(2, attempt));
+      }
+    } else if (res.status >= 500) {
+      backoffMs = Math.min(8000, 400 * Math.pow(2, attempt));
+    } else {
+      // For 4xx other than 429, retry limited times with small delay
+      backoffMs = Math.min(3000, 300 * (attempt + 1));
+    }
+    // Add jitter +/- 20%
+    const jitter = 0.2 * backoffMs;
+    backoffMs = Math.floor(backoffMs + (Math.random() * 2 - 1) * jitter);
     await new Promise(r => setTimeout(r, backoffMs));
     attempt++;
   }
