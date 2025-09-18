@@ -35,3 +35,11 @@ model Asset {
 }
 
 
+model Meta {
+  /// Meta holds small key-value configuration/state used by the index engine.
+  /// Example keys: FAMC_BASE_DATE, FAMC_BASE_SUM, FAMC_BASE_INDEX, FAMC_DIVISOR, FAMC_SET_HASH
+  key   String @id
+  value String
+}
+
+
