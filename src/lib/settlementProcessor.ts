@@ -37,38 +37,33 @@ export async function fetchIndexValue(c: any): Promise<number> {
   const prisma = c.get("prisma")
   if (!prisma) throw new Error('Database connection not available')
 
-  // 獲取最新價格
-  const latestPrices = await Promise.all(
-    symbols.map(async (symbol) => {
-      const latest = await (prisma as any).price.findFirst({
-        where: { symbol },
-        orderBy: { priceTimestamp: 'desc' },
-        select: { symbol: true, price: true }
-      })
-      return latest
+  const [latestPrices, basePrices] = await Promise.all([
+    (prisma as any).price.findMany({
+      where: {
+        symbol: { in: symbols }
+      },
+      orderBy: { priceTimestamp: 'desc' },
+      select: { symbol: true, price: true },
+      distinct: ['symbol'] 
+    }),
+    (prisma as any).price.findMany({
+      where: {
+        symbol: { in: symbols }
+      },
+      orderBy: { priceTimestamp: 'asc' },
+      select: { symbol: true, price: true },
+      distinct: ['symbol'] // 確保每個符號只返回一條記錄
     })
-  )
-
-  // 獲取基準價格
-  const basePrices = await Promise.all(
-    symbols.map(async (symbol) => {
-      const earliest = await (prisma as any).price.findFirst({
-        where: { symbol },
-        orderBy: { priceTimestamp: 'asc' },
-        select: { symbol: true, price: true }
-      })
-      return earliest
-    })
-  )
+  ])
 
   const latestBySymbol = new Map<string, number>()
   const baseBySymbol = new Map<string, number>()
 
-  latestPrices.filter(Boolean).forEach(r => {
+  latestPrices.forEach((r: any) => {
     if (r) latestBySymbol.set(r.symbol, Number(r.price))
   })
 
-  basePrices.filter(Boolean).forEach(r => {
+  basePrices.forEach((r: any) => {
     if (r) baseBySymbol.set(r.symbol, Number(r.price))
   })
 
@@ -151,124 +146,136 @@ async function transferUsdcToUser(userOwner: PublicKey, usdcUiAmount: number) {
 export async function verifyUsdcDepositOnChain(signature: string): Promise<{ fromUser: PublicKey, uiAmount: number } | null> {
   if (!connection || !TREASURY_USDC_ATA || !USDC_DEV_MINT) return null
   
-  const tx = await connection.getTransaction(signature, { 
-    commitment: 'finalized', 
-    maxSupportedTransactionVersion: 0 
-  } as any)
-  
-  if (!tx?.meta) return null
-  
-  const keys = tx.transaction.message.getAccountKeys()
-  const pre = tx.meta.preTokenBalances || []
-  const post = tx.meta.postTokenBalances || []
-  
-  const findPubkeyByIndex = (idx: number) => { 
-    try { 
-      return keys.get(idx) as PublicKey 
-    } catch { 
-      return null 
-    } 
-  }
-  
-  const postTreasury = post.find(b => 
-    b.mint === USDC_DEV_MINT.toBase58() && 
-    findPubkeyByIndex(b.accountIndex)?.equals(TREASURY_USDC_ATA)
-  )
-  
-  if (!postTreasury) return null
-  
-  const preTreasury = pre.find(b => 
-    b.mint === USDC_DEV_MINT.toBase58() && 
-    b.accountIndex === postTreasury.accountIndex
-  ) || { uiTokenAmount: { uiAmount: 0 } as any }
-  
-  const postAmt = Number(postTreasury.uiTokenAmount?.uiAmount || 0)
-  const preAmt = Number((preTreasury as any)?.uiTokenAmount?.uiAmount || 0)
-  const delta = postAmt - preAmt
-  
-  if (!(delta > 0)) return null
-  
-  let senderEntry: { pb: any, change: number } | null = null
-  for (const pb of post) {
-    if (pb.mint !== USDC_DEV_MINT.toBase58()) continue
-    const preb = pre.find(x => x.accountIndex === pb.accountIndex)
-    const pAmt = Number(preb?.uiTokenAmount?.uiAmount || 0)
-    const qAmt = Number(pb.uiTokenAmount?.uiAmount || 0)
-    const change = qAmt - pAmt
-    if (change < 0 && (!senderEntry || change < senderEntry.change)) {
-      senderEntry = { pb, change }
+  try {
+    const tx = await connection.getTransaction(signature, { 
+      commitment: 'confirmed', // Use confirmed instead of finalized for faster response
+      maxSupportedTransactionVersion: 0 
+    } as any)
+    
+    if (!tx?.meta) return null
+    
+    const keys = tx.transaction.message.getAccountKeys()
+    const pre = tx.meta.preTokenBalances || []
+    const post = tx.meta.postTokenBalances || []
+    
+    const findPubkeyByIndex = (idx: number) => { 
+      try { 
+        return keys.get(idx) as PublicKey 
+      } catch { 
+        return null 
+      } 
     }
+    
+    const postTreasury = post.find(b => 
+      b.mint === USDC_DEV_MINT.toBase58() && 
+      findPubkeyByIndex(b.accountIndex)?.equals(TREASURY_USDC_ATA)
+    )
+    
+    if (!postTreasury) return null
+    
+    const preTreasury = pre.find(b => 
+      b.mint === USDC_DEV_MINT.toBase58() && 
+      b.accountIndex === postTreasury.accountIndex
+    ) || { uiTokenAmount: { uiAmount: 0 } as any }
+    
+    const postAmt = Number(postTreasury.uiTokenAmount?.uiAmount || 0)
+    const preAmt = Number((preTreasury as any)?.uiTokenAmount?.uiAmount || 0)
+    const delta = postAmt - preAmt
+    
+    if (!(delta > 0)) return null
+    
+    let senderEntry: { pb: any, change: number } | null = null
+    for (const pb of post) {
+      if (pb.mint !== USDC_DEV_MINT.toBase58()) continue
+      const preb = pre.find(x => x.accountIndex === pb.accountIndex)
+      const pAmt = Number(preb?.uiTokenAmount?.uiAmount || 0)
+      const qAmt = Number(pb.uiTokenAmount?.uiAmount || 0)
+      const change = qAmt - pAmt
+      if (change < 0 && (!senderEntry || change < senderEntry.change)) {
+        senderEntry = { pb, change }
+      }
+    }
+    
+    const senderEntryFinal = senderEntry
+    if (!senderEntryFinal) return null
+    
+    const ownerStr: string | undefined = senderEntryFinal.pb.owner
+    if (!ownerStr) return null
+    
+    return { fromUser: new PublicKey(ownerStr), uiAmount: delta }
+  } catch (error) {
+    // Log error but don't throw - let the calling function handle it
+    console.warn(`Failed to verify USDC deposit for signature ${signature}:`, error);
+    return null;
   }
-  
-  const senderEntryFinal = senderEntry
-  if (!senderEntryFinal) return null
-  
-  const ownerStr: string | undefined = senderEntryFinal.pb.owner
-  if (!ownerStr) return null
-  
-  return { fromUser: new PublicKey(ownerStr), uiAmount: delta }
 }
 
 export async function verifyAxisDepositOnChain(signature: string): Promise<{ fromUser: PublicKey, uiAmount: number } | null> {
   if (!connection || !AXIS_MINT_2022 || !TREASURY_OWNER) return null
   
-  const tx = await connection.getTransaction(signature, { 
-    commitment: 'finalized', 
-    maxSupportedTransactionVersion: 0 
-  } as any)
-  
-  if (!tx?.meta) return null
-  
-  const keys = tx.transaction.message.getAccountKeys()
-  const pre = tx.meta.preTokenBalances || []
-  const post = tx.meta.postTokenBalances || []
-  
-  const findPubkeyByIndex = (idx: number) => { 
-    try { 
-      return keys.get(idx) as PublicKey 
-    } catch { 
-      return null 
-    } 
-  }
-  
-  const treasuryOwnerStr = TREASURY_OWNER!.toBase58()
-  const postTreasuryAxis = post.find(b => 
-    b.mint === AXIS_MINT_2022.toBase58() && 
-    b.owner === treasuryOwnerStr
-  )
-  
-  if (!postTreasuryAxis) return null
-  
-  const preTreasuryAxis = pre.find(b => 
-    b.mint === AXIS_MINT_2022.toBase58() && 
-    b.accountIndex === postTreasuryAxis.accountIndex
-  ) || { uiTokenAmount: { uiAmount: 0 } as any }
-  
-  const postAmt = Number(postTreasuryAxis.uiTokenAmount?.uiAmount || 0)
-  const preAmt = Number((preTreasuryAxis as any)?.uiTokenAmount?.uiAmount || 0)
-  const delta = postAmt - preAmt
-  
-  if (!(delta > 0)) return null
-  
-  let senderEntry: { pb: any, change: number } | null = null
-  for (const pb of post) {
-    if (pb.mint !== AXIS_MINT_2022.toBase58()) continue
-    const preb = pre.find(x => x.accountIndex === pb.accountIndex)
-    const pAmt = Number(preb?.uiTokenAmount?.uiAmount || 0)
-    const qAmt = Number(pb.uiTokenAmount?.uiAmount || 0)
-    const change = qAmt - pAmt
-    if (change < 0 && (!senderEntry || change < senderEntry.change)) {
-      senderEntry = { pb, change }
+  try {
+    const tx = await connection.getTransaction(signature, { 
+      commitment: 'confirmed', // Use confirmed instead of finalized for faster response
+      maxSupportedTransactionVersion: 0 
+    } as any)
+    
+    if (!tx?.meta) return null
+    
+    const keys = tx.transaction.message.getAccountKeys()
+    const pre = tx.meta.preTokenBalances || []
+    const post = tx.meta.postTokenBalances || []
+    
+    const findPubkeyByIndex = (idx: number) => { 
+      try { 
+        return keys.get(idx) as PublicKey 
+      } catch { 
+        return null 
+      } 
     }
+    
+    const treasuryOwnerStr = TREASURY_OWNER!.toBase58()
+    const postTreasuryAxis = post.find(b => 
+      b.mint === AXIS_MINT_2022.toBase58() && 
+      b.owner === treasuryOwnerStr
+    )
+    
+    if (!postTreasuryAxis) return null
+    
+    const preTreasuryAxis = pre.find(b => 
+      b.mint === AXIS_MINT_2022.toBase58() && 
+      b.accountIndex === postTreasuryAxis.accountIndex
+    ) || { uiTokenAmount: { uiAmount: 0 } as any }
+    
+    const postAmt = Number(postTreasuryAxis.uiTokenAmount?.uiAmount || 0)
+    const preAmt = Number((preTreasuryAxis as any)?.uiTokenAmount?.uiAmount || 0)
+    const delta = postAmt - preAmt
+    
+    if (!(delta > 0)) return null
+    
+    let senderEntry: { pb: any, change: number } | null = null
+    for (const pb of post) {
+      if (pb.mint !== AXIS_MINT_2022.toBase58()) continue
+      const preb = pre.find(x => x.accountIndex === pb.accountIndex)
+      const pAmt = Number(preb?.uiTokenAmount?.uiAmount || 0)
+      const qAmt = Number(pb.uiTokenAmount?.uiAmount || 0)
+      const change = qAmt - pAmt
+      if (change < 0 && (!senderEntry || change < senderEntry.change)) {
+        senderEntry = { pb, change }
+      }
+    }
+    
+    const senderEntryFinal = senderEntry
+    if (!senderEntryFinal) return null
+    
+    const fromOwner = senderEntryFinal.pb.owner
+    if (!fromOwner) return null
+    
+    return { fromUser: new PublicKey(fromOwner), uiAmount: delta }
+  } catch (error) {
+    // Log error but don't throw - let the calling function handle it
+    console.warn(`Failed to verify AXIS deposit for signature ${signature}:`, error);
+    return null;
   }
-  
-  const senderEntryFinal = senderEntry
-  if (!senderEntryFinal) return null
-  
-  const fromOwner = senderEntryFinal.pb.owner
-  if (!fromOwner) return null
-  
-  return { fromUser: new PublicKey(fromOwner), uiAmount: delta }
 }
 
 export async function processDepositSignature(c: any, signature: string) {

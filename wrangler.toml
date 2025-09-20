@@ -26,7 +26,7 @@ database_name = "axis_trigger"
 database_id = "df225f07-9768-4595-89a0-3823a45698cf"
 
 [triggers]
-crons = ["0 */3 * * *", "*/1 * * * *"]
+crons = ["0 */3 * * *", "*/2 * * * *"]
 
 [limits]
 cpu_ms=300_000

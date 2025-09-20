@@ -9,7 +9,26 @@ import bs58 from 'bs58';
 // ----- Solana connection -----
 export const connection = new Connection(
   `${process.env.SOLANA_RPC_URL}?api-key=${process.env.SOLANA_RPC_API_KEY}` || 'https://api.devnet.solana.com',
-  'confirmed'
+  {
+    commitment: 'confirmed',
+    confirmTransactionInitialTimeout: 30000, // 30 seconds timeout for transaction confirmation
+    disableRetryOnRateLimit: false, // Enable retry on rate limit
+    httpHeaders: {
+      'Content-Type': 'application/json',
+    },
+    fetch: (url, options) => {
+      // Add timeout to individual requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 second timeout per request
+      
+      return fetch(url, {
+        ...options,
+        signal: controller.signal,
+      }).finally(() => {
+        clearTimeout(timeoutId);
+      });
+    }
+  }
 );
 
 // ----- Treasury signer -----
