@@ -1,8 +1,8 @@
 import { PublicKey, ComputeBudgetProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js'
 import { getOrCreateAssociatedTokenAccount, createTransferCheckedInstruction, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token'
-import axios from 'axios'
 import { connection, loadTreasurySigner, TREASURY_OWNER } from './solana'
 import { putPending, markPaid, markFailed } from './settlementStore'
+import type { PrismaLike } from '../db/types'
 
 function safePk(raw?: string | null): PublicKey | null {
   try { 
@@ -18,65 +18,83 @@ const USDC_DEV_MINT = safePk(process.env.USDC_DEV_MINT)
 const TREASURY_USDC_ATA = safePk(process.env.TREASURY_USDC_ATA)
 const AXIS_MINT_2022 = safePk(process.env.AXIS_MINT_2022)
 const AXIS_DEC = parseInt(process.env.AXIS_DECIMALS || '9', 10)
-let PYTH_PRICE_IDS: string[] = []
-try { 
-  PYTH_PRICE_IDS = JSON.parse(process.env.PYTH_PRICE_IDS || '[]') 
-} catch { 
-  PYTH_PRICE_IDS = [] 
-}
 
 const L = (o: any) => console.log(JSON.stringify({ ts: new Date().toISOString(), mod: 'settlement-processor', ...o }))
 
-// --- Simple TTL cache for index value ---
-let __INDEX_CACHE__: { ts: number, value: number } | null = null
-const INDEX_TTL_MS = 45_000
+export async function fetchIndexValue(c: any): Promise<number> {
+  const { loadAssetsFromBundledConfig, loadAssetsFromEnv } = await import('../providers/envAssets')
+  const { loadAssetFreeFloats } = await import('../utils/indexSeries')
+  const { loadAppConfig } = await import('../config')
 
-export async function fetchIndexValue(): Promise<number> {
-  const now = Date.now()
-  if (__INDEX_CACHE__ && (now - __INDEX_CACHE__.ts) < INDEX_TTL_MS) {
-    return __INDEX_CACHE__.value
-  }
+  const cfg = loadAppConfig()
+  const assets = cfg.assetConfigFilePath ? loadAssetsFromBundledConfig() : loadAssetsFromEnv()
+  if (assets.length === 0) throw new Error('no assets configured')
+
+  const { freeFloatBySymbol } = await loadAssetFreeFloats()
+  const symbols = assets.map(a => a.symbol)
   
-  const { data } = await axios.get('https://hermes.pyth.network/api/latest_price_feeds', {
-    params: { ids: PYTH_PRICE_IDS, binary: false },
+  // 使用 c.get("prisma") 獲取 prisma 實例
+  const prisma = c.get("prisma")
+  if (!prisma) throw new Error('Database connection not available')
+
+  // 獲取最新價格
+  const latestPrices = await Promise.all(
+    symbols.map(async (symbol) => {
+      const latest = await (prisma as any).price.findFirst({
+        where: { symbol },
+        orderBy: { priceTimestamp: 'desc' },
+        select: { symbol: true, price: true }
+      })
+      return latest
+    })
+  )
+
+  // 獲取基準價格
+  const basePrices = await Promise.all(
+    symbols.map(async (symbol) => {
+      const earliest = await (prisma as any).price.findFirst({
+        where: { symbol },
+        orderBy: { priceTimestamp: 'asc' },
+        select: { symbol: true, price: true }
+      })
+      return earliest
+    })
+  )
+
+  const latestBySymbol = new Map<string, number>()
+  const baseBySymbol = new Map<string, number>()
+
+  latestPrices.filter(Boolean).forEach(r => {
+    if (r) latestBySymbol.set(r.symbol, Number(r.price))
   })
-  
-  const base: Record<string, number> = { 
-    BTC: 42739.27, ETH: 2528.09, XRP: 0.568, BNB: 309.09, SOL: 102.07,
-    DOGE: 0.08053, TRX: 0.1083, ADA: 0.5278, SUI: 1.292, AVAX: 36.03 
-  }
-  
-  const map: Record<string, string> = {
-    'e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43': 'BTC',
-    'ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace': 'ETH',
-    'ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d': 'SOL',
-    '2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f': 'BNB',
-    'ec5d399846a9209f3fe5881d70aae9268c94339ff9817e8d18ff19fa05eea1c8': 'XRP',
-    'dcef50dd0a4cd2dcc17e45df1676dcb336a11a61c69df7a0299b0150c672d25c': 'DOGE',
-    '2a01deaec9e51a579277b34b122399984d0bbf57e2458a7e42ecd2829867a0d': 'ADA',
-    '93da3352f9f1d105fdfe4971cfa80e9dd777bfc5d0f683ebb6e1294b92137bb7': 'AVAX',
-    '67aed5a24fdad045475e7195c98a98aea119c763f272d4523f5bac93a4f33c2b': 'TRX',
-    '23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744': 'SUI',
-  }
-  
-  const latest: Record<string, number> = {}
-  for (const d of data) {
-    const expo = d.price?.expo ?? d.price?.exponent ?? 0
-    latest[String(d.id).replace(/^0x/, '').toLowerCase()] = Number(d.price?.price) * Math.pow(10, expo)
-  }
-  
-  const ratios = Object.entries(map).map(([id, sym]) => {
-    const p = latest[id] ?? 0
-    const b = base[sym]
-    return b ? p / b : 0
+
+  basePrices.filter(Boolean).forEach(r => {
+    if (r) baseBySymbol.set(r.symbol, Number(r.price))
   })
+
+  const present = symbols.filter(s => 
+    latestBySymbol.has(s) && baseBySymbol.has(s) && freeFloatBySymbol.has(s)
+  )
+
+  if (present.length === 0) throw new Error('no prices available')
+
+  let baseIndex = 0
+  let currentIndex = 0
   
-  const idx = 100 * (ratios.reduce((a, b) => a + b, 0) / ratios.length)
-  __INDEX_CACHE__ = { ts: now, value: idx }
-  return idx
+  for (const s of present) {
+    const ff = freeFloatBySymbol.get(s) || 0
+    const pBase = baseBySymbol.get(s) as number
+    const pNow = latestBySymbol.get(s) as number
+    baseIndex += ff * pBase
+    currentIndex += ff * pNow
+  }
+
+  if (baseIndex === 0) throw new Error('baseline index is zero')
+  
+  return 100 * (currentIndex / baseIndex)
 }
 
-async function transferAxisToUser(userOwner: PublicKey, axisUiAmount: number, options?: { fast?: boolean }) {
+async function transferAxisToUser(userOwner: PublicKey, axisUiAmount: number) {
   if (!connection) throw new Error('Solana connection not available')
   if (!TREASURY_OWNER) throw new Error('TREASURY_OWNER not available')
   if (!AXIS_MINT_2022) throw new Error('AXIS_MINT_2022 not available')
@@ -101,13 +119,10 @@ async function transferAxisToUser(userOwner: PublicKey, axisUiAmount: number, op
   )
   tx.feePayer = signer.publicKey
   
-  if (options?.fast) {
-    return await connection.sendTransaction(tx, [signer], { skipPreflight: true })
-  }
   return await sendAndConfirmTransaction(connection, tx, [signer], { commitment: 'finalized' })
 }
 
-async function transferUsdcToUser(userOwner: PublicKey, usdcUiAmount: number, options?: { fast?: boolean }) {
+async function transferUsdcToUser(userOwner: PublicKey, usdcUiAmount: number) {
   if (!connection) throw new Error('Solana connection not available')
   if (!TREASURY_USDC_ATA) throw new Error('TREASURY_USDC_ATA not available')
   if (!USDC_DEV_MINT) throw new Error('USDC_DEV_MINT not available')
@@ -130,9 +145,6 @@ async function transferUsdcToUser(userOwner: PublicKey, usdcUiAmount: number, op
   )
   tx.feePayer = signer.publicKey
   
-  if (options?.fast) {
-    return await connection.sendTransaction(tx, [signer], { skipPreflight: true })
-  }
   return await sendAndConfirmTransaction(connection, tx, [signer], { commitment: 'finalized' })
 }
 
@@ -263,10 +275,14 @@ export async function processDepositSignature(c: any, signature: string) {
   L({ lvl: 'info', step: 'process.begin', signature })
   
   try {
-    // Try USDC->mint path
-    const verUSDC = await verifyUsdcDepositOnChain(signature)
+    // 並行執行驗證和價格獲取
+    const [verUSDC, verAXIS, indexValue] = await Promise.all([
+      verifyUsdcDepositOnChain(signature),
+      verifyAxisDepositOnChain(signature),
+      fetchIndexValue(c)
+    ])
+
     if (verUSDC) {
-      const indexValue = await fetchIndexValue()
       const axisToSend = verUSDC.uiAmount / indexValue
       const sendSig = await transferAxisToUser(verUSDC.fromUser, axisToSend)
       await markPaid(c, signature, { 
@@ -282,10 +298,7 @@ export async function processDepositSignature(c: any, signature: string) {
       }
     }
     
-    // Try AXIS->burn path
-    const verAXIS = await verifyAxisDepositOnChain(signature)
     if (verAXIS) {
-      const indexValue = await fetchIndexValue()
       const usdcToSend = verAXIS.uiAmount * indexValue
       const sendSig = await transferUsdcToUser(verAXIS.fromUser, usdcToSend)
       await markPaid(c, signature, { 
@@ -324,14 +337,14 @@ export async function classifyDeposit(signature: string): Promise<DepositClassif
   return null
 }
 
-export async function getPayoutPlan(signature: string): Promise<
+export async function getPayoutPlan(c: any, signature: string): Promise<
   | { side: 'mint', axisUi: number, indexValue: number, fromUser: string }
   | { side: 'burn', usdcUi: number, indexValue: number, fromUser: string }
 > {
   const cls = await classifyDeposit(signature)
   if (!cls) throw new Error('Signature does not match mint or burn deposit')
   
-  const indexValue = await fetchIndexValue()
+  const indexValue = await fetchIndexValue(c)
   
   if (cls.kind === 'mint') {
     const axisUi = cls.uiAmount / indexValue
@@ -342,15 +355,15 @@ export async function getPayoutPlan(signature: string): Promise<
   }
 }
 
-export async function payoutForSignature(c: any, signature: string, fast = true) {
+export async function payoutForSignature(c: any, signature: string) {
   const cls = await classifyDeposit(signature)
   if (!cls) throw new Error('Signature does not match mint or burn deposit')
   
-  const indexValue = await fetchIndexValue()
+  const indexValue = await fetchIndexValue(c)
   
   if (cls.kind === 'mint') {
     const axisUi = cls.uiAmount / indexValue
-    const sendSig = await transferAxisToUser(cls.fromUser, axisUi, { fast })
+    const sendSig = await transferAxisToUser(cls.fromUser, axisUi)
     await markPaid(c, signature, { 
       axisUi, 
       indexValue, 
@@ -364,7 +377,7 @@ export async function payoutForSignature(c: any, signature: string, fast = true)
     }
   } else {
     const usdcUi = cls.uiAmount * indexValue
-    const sendSig = await transferUsdcToUser(cls.fromUser, usdcUi, { fast })
+    const sendSig = await transferUsdcToUser(cls.fromUser, usdcUi)
     await markPaid(c, signature, { 
       usdcUi, 
       indexValue, 

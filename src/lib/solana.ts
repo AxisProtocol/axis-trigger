@@ -23,18 +23,28 @@ export function loadTreasurySigner(): Keypair {
     }
     
     try {
-      // Handle both base58 and array format
-      let keyArray: number[];
+      let keyArray: Uint8Array;
+      
+      // Handle array format (JSON array of numbers)
       if (privateKey.startsWith('[') && privateKey.endsWith(']')) {
-        keyArray = JSON.parse(privateKey);
-      } else {
-        // Assume base58 format
-        keyArray = Array.from(bs58.decode(privateKey));
+        const parsedArray = JSON.parse(privateKey) as number[];
+        if (!Array.isArray(parsedArray) || parsedArray.length !== 64) {
+          throw new Error('Invalid private key array format: must be 64 numbers');
+        }
+        keyArray = new Uint8Array(parsedArray);
+      } 
+      // Handle base58 format
+      else {
+        const decoded = bs58.decode(privateKey);
+        if (decoded.length !== 64) {
+          throw new Error('Invalid private key length: must be 64 bytes');
+        }
+        keyArray = decoded;
       }
       
-      treasurySigner = Keypair.fromSecretKey(new Uint8Array(keyArray));
+      treasurySigner = Keypair.fromSecretKey(keyArray);
     } catch (error) {
-      throw new Error(`Failed to parse TREASURY_PRIVATE_KEY: ${error}`);
+      throw new Error(`Failed to parse TREASURY_PRIVATE_KEY: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   

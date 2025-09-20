@@ -60,10 +60,18 @@ export default {
   scheduled: async (event: any, env: any, ctx: any) => {
     const prisma = createPrisma({ DB: env.DB });
     try {
-      // Check if this is a settlement processing cron (every 2 minutes)
-      if (event.cron === "*/2 * * * *") {
+      // Check if this is a settlement processing cron (every 1 minute)
+      if (event.cron === "*/1 * * * *") {
         console.log("Processing pending settlements...");
-        await processPendingSettlements({ env });
+
+        const context = {
+          env,
+          get: (key: string) => {
+            if (key === "prisma") return prisma;
+            return null;
+          }
+        };
+        await processPendingSettlements(context);
       } else {
         // For other scheduled runs, process the last 3 days
         const result = await performUpdate(prisma as any, env as any, { days: 3 });
@@ -74,4 +82,3 @@ export default {
     }
   }
 } as any;
-
