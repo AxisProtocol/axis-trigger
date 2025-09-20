@@ -47,8 +47,6 @@ async function storeWebhookEvent(c: any, signature: string, eventData: any) {
   await kv.put(`webhook:${signature}`, JSON.stringify(webhookRecord), { 
     expirationTtl: 86400 // 24 hours
   });
-  
-  L({ lvl: 'debug', msg: 'webhook.event.stored', signature: signature.substring(0, 8) + '...' });
 }
 
 // ----- Fast deposit detection from Helius events -----
@@ -58,50 +56,25 @@ function scanUsdcDeposit(ev: Ev) {
   const USDC_DEV_MINT = process.env.USDC_DEV_MINT;
   const TREASURY_OWNER = process.env.TREASURY_OWNER;
   
-  L({ 
-    lvl: 'debug', 
-    msg: 'scan.usdc.start',
-    hasUsdcMint: !!USDC_DEV_MINT,
-    hasTreasuryOwner: !!TREASURY_OWNER,
-    usdcMint: USDC_DEV_MINT?.substring(0, 8) + '...',
-    treasuryOwner: TREASURY_OWNER?.substring(0, 8) + '...'
-  });
-  
   if (!TREASURY_OWNER || !USDC_DEV_MINT) {
-    L({ lvl: 'warn', msg: 'scan.usdc.missing.config' });
     return null;
   }
   
   // Fast tokenTransfers scan
   const tts = Array.isArray(ev?.tokenTransfers) ? ev.tokenTransfers : [];
-  L({ 
-    lvl: 'debug', 
-    msg: 'scan.usdc.tokenTransfers',
-    count: tts.length,
-    transfers: tts.map((t: any) => ({
-      mint: t.mint?.substring(0, 8) + '...',
-      fromUser: t.fromUserAccount?.substring(0, 8) + '...',
-      toUser: t.toUserAccount?.substring(0, 8) + '...',
-      amount: t.tokenAmount,
-      isUsdcMint: t.mint === USDC_DEV_MINT,
-      isToTreasury: t.toUserAccount === TREASURY_OWNER
-    }))
-  });
   
   for (const t of tts) {
     if (t.mint === USDC_DEV_MINT && t.toUserAccount === TREASURY_OWNER) {
       L({ 
         lvl: 'info', 
-        msg: 'scan.usdc.found',
+        msg: 'usdc.deposit.found',
         fromUser: t.fromUserAccount?.substring(0, 8) + '...',
-        amount: t.tokenAmount,
-        mint: t.mint?.substring(0, 8) + '...'
+        amount: t.tokenAmount
       });
       return { fromUser: t.fromUserAccount as string, uiAmount: Number(t.tokenAmount) };
     }
   }
   
-  L({ lvl: 'debug', msg: 'scan.usdc.no.match' });
   return null;
 }
 
@@ -109,50 +82,25 @@ function scanAxisDeposit(ev: Ev) {
   const AXIS_MINT_2022 = process.env.AXIS_MINT_2022;
   const TREASURY_OWNER = process.env.TREASURY_OWNER;
   
-  L({ 
-    lvl: 'debug', 
-    msg: 'scan.axis.start',
-    hasAxisMint: !!AXIS_MINT_2022,
-    hasTreasuryOwner: !!TREASURY_OWNER,
-    axisMint: AXIS_MINT_2022?.substring(0, 8) + '...',
-    treasuryOwner: TREASURY_OWNER?.substring(0, 8) + '...'
-  });
-  
   if (!TREASURY_OWNER || !AXIS_MINT_2022) {
-    L({ lvl: 'warn', msg: 'scan.axis.missing.config' });
     return null;
   }
   
   // Fast tokenTransfers scan
   const tts = Array.isArray(ev?.tokenTransfers) ? ev.tokenTransfers : [];
-  L({ 
-    lvl: 'debug', 
-    msg: 'scan.axis.tokenTransfers',
-    count: tts.length,
-    transfers: tts.map((t: any) => ({
-      mint: t.mint?.substring(0, 8) + '...',
-      fromUser: t.fromUserAccount?.substring(0, 8) + '...',
-      toUser: t.toUserAccount?.substring(0, 8) + '...',
-      amount: t.tokenAmount,
-      isAxisMint: t.mint === AXIS_MINT_2022,
-      isToTreasury: t.toUserAccount === TREASURY_OWNER
-    }))
-  });
   
   for (const t of tts) {
     if (t.mint === AXIS_MINT_2022 && t.toUserAccount === TREASURY_OWNER) {
       L({ 
         lvl: 'info', 
-        msg: 'scan.axis.found',
+        msg: 'axis.deposit.found',
         fromUser: t.fromUserAccount?.substring(0, 8) + '...',
-        amount: t.tokenAmount,
-        mint: t.mint?.substring(0, 8) + '...'
+        amount: t.tokenAmount
       });
       return { fromUser: t.fromUserAccount as string, uiAmount: Number(t.tokenAmount) };
     }
   }
   
-  L({ lvl: 'debug', msg: 'scan.axis.no.match' });
   return null;
 }
 
@@ -265,12 +213,11 @@ const postHandler = async (c: any) => {
 
   const body = await c.req.json();
   const events: Ev[] = Array.isArray(body) ? body : (Array.isArray(body?.events) ? body.events : [body]);
-  console.log('ev', events[0].signature);
+  
   L({ 
     lvl: 'info', 
     msg: 'webhook.start',
-    eventsCount: events.length,
-    timestamp: new Date().toISOString()
+    eventsCount: events.length
   });
 
   const recorded: any[] = [];
@@ -288,31 +235,9 @@ const postHandler = async (c: any) => {
     const sig = ev?.signature;
     if (!sig) continue;
 
-    L({ 
-      lvl: 'debug', 
-      msg: 'processing.event',
-      signature: sig.substring(0, 8) + '...',
-      type: ev?.type || ev?.transactionType,
-      slot: ev?.slot,
-      hasTokenTransfers: Array.isArray(ev?.tokenTransfers),
-      tokenTransfersCount: ev?.tokenTransfers?.length || 0,
-      hasAccountData: Array.isArray(ev?.accountData),
-      accountDataCount: ev?.accountData?.length || 0,
-      description: ev?.description
-    });
-
     // Check USDC deposit (mint)
-    L({ lvl: 'debug', msg: 'checking.usdc.deposit' });
     const usdcDeposit = scanUsdcDeposit(ev);
     if (usdcDeposit) {
-      L({ 
-        lvl: 'info', 
-        msg: 'usdc.deposit.detected',
-        signature: sig.substring(0, 8) + '...',
-        fromUser: usdcDeposit.fromUser.substring(0, 8) + '...',
-        amount: usdcDeposit.uiAmount
-      });
-      
       try {
         await putPending(c, sig, { 
           side: 'mint', 
@@ -333,17 +258,8 @@ const postHandler = async (c: any) => {
     }
 
     // Check AXIS deposit (burn)
-    L({ lvl: 'debug', msg: 'checking.axis.deposit' });
     const axisDeposit = scanAxisDeposit(ev);
     if (axisDeposit) {
-      L({ 
-        lvl: 'info', 
-        msg: 'axis.deposit.detected',
-        signature: sig.substring(0, 8) + '...',
-        fromUser: axisDeposit.fromUser.substring(0, 8) + '...',
-        amount: axisDeposit.uiAmount
-      });
-      
       try {
         await putPending(c, sig, { 
           side: 'burn', 
@@ -360,20 +276,12 @@ const postHandler = async (c: any) => {
       } catch (error) {
         L({ lvl: 'error', msg: 'burn.record.failed', sig: sig.substring(0, 8) + '...', error: error instanceof Error ? error.message : String(error) });
       }
-    } else {
-      L({ 
-        lvl: 'debug', 
-        msg: 'no.deposit.detected',
-        signature: sig.substring(0, 8) + '...'
-      });
     }
   }
 
-  const totalTime = Date.now() - startTime;
   L({ 
     lvl: 'info', 
     msg: 'webhook.completed',
-    totalTimeMs: totalTime,
     recordedCount: recorded.length
   });
 
@@ -399,9 +307,6 @@ const getHandler = async (c: any) => {
       const eventData = await kv.get(`webhook:${sig}`);
       if (eventData) {
         webhookEvent = JSON.parse(eventData);
-        L({ lvl: 'info', msg: 'webhook.event.found', signature: sig.substring(0, 8) + '...' });
-      } else {
-        L({ lvl: 'warn', msg: 'webhook.event.not.found', signature: sig.substring(0, 8) + '...' });
       }
     }
   }
@@ -419,7 +324,6 @@ const getHandler = async (c: any) => {
     webhookEvent
   };
 
-  L({ lvl: 'info', msg: 'webhook.status.check', config: status.config, hasWebhookEvent: !!webhookEvent });
   return c.json(status);
 };
 

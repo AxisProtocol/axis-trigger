@@ -52,7 +52,7 @@ export async function fetchIndexValue(c: any): Promise<number> {
       },
       orderBy: { priceTimestamp: 'asc' },
       select: { symbol: true, price: true },
-      distinct: ['symbol'] // 確保每個符號只返回一條記錄
+      distinct: ['symbol'],
     })
   ])
 
@@ -282,7 +282,6 @@ export async function processDepositSignature(c: any, signature: string) {
   L({ lvl: 'info', step: 'process.begin', signature })
   
   try {
-    // 並行執行驗證和價格獲取
     const [verUSDC, verAXIS, indexValue] = await Promise.all([
       verifyUsdcDepositOnChain(signature),
       verifyAxisDepositOnChain(signature),

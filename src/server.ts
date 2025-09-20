@@ -61,7 +61,7 @@ export default {
     const prisma = createPrisma({ DB: env.DB });
     try {
       // Check if this is a settlement processing cron (every 1 minute)
-      if (event.cron === "*/1 * * * *") {
+      if (event.cron === "*/2 * * * *") {
         console.log("Processing pending settlements...");
 
         const context = {

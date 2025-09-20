@@ -9,10 +9,8 @@ interface CloudflareBindings {
 
 const getKV = (c: any): KVNamespace | null => {
   try {
-    console.log('Getting KV store', c.env?.SETTLEMENTS_KV);
     return c.env?.SETTLEMENTS_KV || null;
   } catch {
-    console.log('Error getting KV store');
     return null;
   }
 };
@@ -88,11 +86,8 @@ export const settlementApi = new OpenAPIHono().openapi(route, async (c) => {
     const { sig } = c.req.valid('param');
 
     if (!sig) {
-      console.log('[Settlement API] Missing signature parameter');
       return c.json({ error: 'Signature parameter is required' }, 400);
     }
-
-    console.log(`[Settlement API] Checking settlement for signature: ${sig}`);
 
     // Get settlement data from the store
     const settlementRecord = await getOne(c, sig);
@@ -101,8 +96,6 @@ export const settlementApi = new OpenAPIHono().openapi(route, async (c) => {
     const webhookEvent = await getWebhookEvent(c, sig);
     
     if (settlementRecord) {
-      console.log(`[Settlement API] Found settlement record:`, settlementRecord);
-      
       // Return the record in the format expected by the modal
       const responseData = {
         record: {
@@ -119,11 +112,8 @@ export const settlementApi = new OpenAPIHono().openapi(route, async (c) => {
         webhookEvent
       } as any;
       
-      console.log(`[Settlement API] Returning settlement data:`, responseData);
       return c.json(responseData);
     } else {
-      console.log(`[Settlement API] No settlement record found for signature: ${sig}`);
-      
       // Return a pending record if none exists (this might happen for new transactions)
       const defaultRecord = {
         record: {
@@ -135,12 +125,11 @@ export const settlementApi = new OpenAPIHono().openapi(route, async (c) => {
         webhookEvent
       } as any;
       
-      console.log(`[Settlement API] Returning default pending record:`, defaultRecord);
       return c.json(defaultRecord);
     }
 
   } catch (error) {
-    console.error('[Settlement API] Error fetching settlement:', error);
+    console.error('[Settlement API] Error:', error);
     return c.json(
       { error: 'Internal server error' },
       500
