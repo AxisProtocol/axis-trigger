@@ -33,12 +33,17 @@
     "@prisma/adapter-d1": "^6.16.2",
     "@prisma/client": "^6.16.2",
     "@prisma/extension-accelerate": "^2.0.2",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "axios": "^1.12.2",
+    "bs58": "^6.0.0",
     "dotenv": "^16.4.5",
     "hono": "^4.9.4",
     "undici": "^6.19.8",
     "zod": "^4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250920.0",
     "@prisma/adapter-neon": "^6.16.2",
     "@types/node": "^22.7.5",
     "bufferutil": "^4.0.9",

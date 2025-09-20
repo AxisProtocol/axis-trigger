@@ -3,12 +3,18 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { prettyJSON } from "hono/pretty-json";
 import { cors } from "hono/cors";
 import type { PrismaLike } from "./db/types";
+import type { KVNamespace } from "@cloudflare/workers-types";
 import { api } from "./routes";
 import { createPrisma } from "./db/prismaD1";
 import { performUpdate } from "./scheduled/update";
+import { processPendingSettlements } from "./scheduled/settlementProcessor";
+
+interface CloudflareBindings {
+  SETTLEMENTS_KV: KVNamespace;
+}
 
 const openapi_documentation_route = "/openapi.json";
-const app = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().doc(openapi_documentation_route, {
+const app = new OpenAPIHono<{ Variables: { prisma: PrismaLike }, Bindings: CloudflareBindings }>().doc(openapi_documentation_route, {
   openapi: "3.1.0",
   info: {
     version: "1.0.0",
@@ -54,9 +60,15 @@ export default {
   scheduled: async (event: any, env: any, ctx: any) => {
     const prisma = createPrisma({ DB: env.DB });
     try {
-      // For scheduled runs, always process the last 3 days
-      const result = await performUpdate(prisma as any, env as any, { days: 3 });
-      console.log("Scheduled update result:", result);
+      // Check if this is a settlement processing cron (every 2 minutes)
+      if (event.cron === "*/2 * * * *") {
+        console.log("Processing pending settlements...");
+        await processPendingSettlements({ env });
+      } else {
+        // For other scheduled runs, process the last 3 days
+        const result = await performUpdate(prisma as any, env as any, { days: 3 });
+        console.log("Scheduled update result:", result);
+      }
     } finally {
       try { await (prisma as any).$disconnect?.(); } catch {}
     }
