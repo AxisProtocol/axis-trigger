@@ -81,58 +81,101 @@ const route = createRoute({
   },
 });
 
-export const settlementApi = new OpenAPIHono().openapi(route, async (c) => {
+// Helper function for settlement logic
+async function handleSettlementRequest(c: any, sig: string) {
+  console.log(`[Settlement API] Request from origin: ${c.req.header('origin')}`);
+  console.log(`[Settlement API] Request headers:`, Object.fromEntries(c.req.raw.headers.entries()));
+  console.log(`[Settlement API] Processing request for signature: ${sig}`);
+
+  // Get settlement data from the store
+  const settlementRecord = await getOne(c, sig);
+  
+  // Get webhook event from KV
+  const webhookEvent = await getWebhookEvent(c, sig);
+  
+  if (settlementRecord) {
+    // Return the record in the format expected by the modal
+    const responseData = {
+      record: {
+        phase: settlementRecord.phase,
+        side: settlementRecord.side,
+        depositSig: settlementRecord.depositSig,
+        usdcUi: settlementRecord.usdcUi,
+        axisUi: settlementRecord.axisUi,
+        indexValue: settlementRecord.indexValue,
+        payoutSig: settlementRecord.payoutSig,
+        error: settlementRecord.error,
+        timestamp: settlementRecord.timestamp,
+      },
+      webhookEvent
+    } as any;
+    
+    return c.json(responseData);
+  } else {
+    // Return a pending record if none exists (this might happen for new transactions)
+    const defaultRecord = {
+      record: {
+        phase: 'pending' as const,
+        side: 'mint' as const,
+        depositSig: sig,
+        timestamp: Date.now(),
+      },
+      webhookEvent
+    } as any;
+    
+    return c.json(defaultRecord);
+  }
+}
+
+// Create regular Hono instance for basic routes
+const settlementHono = new OpenAPIHono()
+  .get("/test", (c) => {
+    console.log(`[Settlement Test] Request from origin: ${c.req.header('origin')}`);
+    return c.json({ message: "Settlement API is working", origin: c.req.header('origin') });
+  })
+  .get("/settlement/:sig", async (c) => {
+    try {
+      const sig = c.req.param('sig');
+
+      if (!sig) {
+        console.log(`[Settlement API] Missing signature parameter`);
+        return c.json({ error: 'Signature parameter is required' }, 400);
+      }
+      
+      return await handleSettlementRequest(c, sig);
+
+    } catch (error) {
+      console.error('[Settlement API] Error:', error);
+      return c.json(
+        { error: 'Internal server error' },
+        500
+      );
+    }
+  });
+
+// Create OpenAPI instance for OpenAPI route
+const settlementOpenAPI = new OpenAPIHono()
+  .openapi(route, async (c: any) => {
   try {
     const { sig } = c.req.valid('param');
 
     if (!sig) {
+      console.log(`[Settlement API OpenAPI] Missing signature parameter`);
       return c.json({ error: 'Signature parameter is required' }, 400);
     }
-
-    // Get settlement data from the store
-    const settlementRecord = await getOne(c, sig);
     
-    // Get webhook event from KV
-    const webhookEvent = await getWebhookEvent(c, sig);
-    
-    if (settlementRecord) {
-      // Return the record in the format expected by the modal
-      const responseData = {
-        record: {
-          phase: settlementRecord.phase,
-          side: settlementRecord.side,
-          depositSig: settlementRecord.depositSig,
-          usdcUi: settlementRecord.usdcUi,
-          axisUi: settlementRecord.axisUi,
-          indexValue: settlementRecord.indexValue,
-          payoutSig: settlementRecord.payoutSig,
-          error: settlementRecord.error,
-          timestamp: settlementRecord.timestamp,
-        },
-        webhookEvent
-      } as any;
-      
-      return c.json(responseData);
-    } else {
-      // Return a pending record if none exists (this might happen for new transactions)
-      const defaultRecord = {
-        record: {
-          phase: 'pending' as const,
-          side: 'mint' as const,
-          depositSig: sig,
-          timestamp: Date.now(),
-        },
-        webhookEvent
-      } as any;
-      
-      return c.json(defaultRecord);
-    }
+    return await handleSettlementRequest(c, sig);
 
   } catch (error) {
-    console.error('[Settlement API] Error:', error);
+    console.error('[Settlement API OpenAPI] Error:', error);
     return c.json(
       { error: 'Internal server error' },
       500
     );
   }
 });
+
+// Export combined API
+export const settlementApi = new OpenAPIHono()
+  .route("/", settlementHono)
+  .route("/", settlementOpenAPI);

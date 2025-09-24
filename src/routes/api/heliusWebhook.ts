@@ -329,4 +329,3 @@ const getHandler = async (c: any) => {
 
 export const heliusWebhook = new OpenAPIHono()
   .openapi(postRoute, postHandler)
-  .openapi(getRoute, getHandler);

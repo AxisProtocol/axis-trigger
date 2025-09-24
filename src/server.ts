@@ -26,14 +26,22 @@ app
   .use("*", cors({
     origin: (origin: string) => {
       if (!origin) return null;
-      if (/^https?:\/\/([a-z0-9-]+\.)*axis-protocol\.xyz$/i.test(origin)) return origin; // allow subdomains
-      if (/^https?:\/\/localhost(?::\d+)?$/.test(origin)) return origin;
-      if (/^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(origin)) return origin;
+      // Allow axis-protocol.xyz and all its subdomains (including www.)
+      if (/^https?:\/\/([a-z0-9-]+\.)*axis-protocol\.xyz$/i.test(origin)) {
+        return origin;
+      }
+      // Allow localhost for development
+      if (/^https?:\/\/localhost(?::\d+)?$/.test(origin)) {
+        return origin;
+      }
+      if (/^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(origin)) {
+        return origin;
+      }
       return null;
     },
-    allowHeaders: ["Content-Type", "Authorization"],
-    allowMethods: ["POST", "GET", "OPTIONS"],
-    exposeHeaders: ["Content-Length"],
+    allowHeaders: ["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+    allowMethods: ["POST", "GET", "OPTIONS", "PUT", "DELETE"],
+    exposeHeaders: ["Content-Length", "Content-Type"],
     maxAge: 600,
     credentials: true,
   }))
