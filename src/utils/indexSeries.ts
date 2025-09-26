@@ -27,7 +27,13 @@ function toBucketStart(unixSec: number, intervalSec: number): number {
 export async function loadAssetFreeFloats(): Promise<{ symbols: string[]; freeFloatBySymbol: Map<string, number>; }>
 {
   const cfg = loadAppConfig();
-  const assets = cfg.assetConfigFilePath ? loadAssetsFromBundledConfig() : loadAssetsFromEnv();
+  // Merge env and bundled; env overrides by symbol
+  const envAssets = loadAssetsFromEnv();
+  const bundledAssets = loadAssetsFromBundledConfig();
+  const bySymbol = new Map<string, (typeof envAssets)[number]>();
+  for (const a of bundledAssets) bySymbol.set(a.symbol, a);
+  for (const a of envAssets) bySymbol.set(a.symbol, a);
+  const assets = Array.from(bySymbol.values());
   const freeFloatBySymbol = new Map<string, number>();
   for (const a of assets) {
     const { freeFloat } = computeFreeFloat(a);

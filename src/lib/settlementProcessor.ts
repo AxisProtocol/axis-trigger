@@ -27,7 +27,13 @@ export async function fetchIndexValue(c: any): Promise<number> {
   const { loadAppConfig } = await import('../config')
 
   const cfg = loadAppConfig()
-  const assets = cfg.assetConfigFilePath ? loadAssetsFromBundledConfig() : loadAssetsFromEnv()
+  // Merge env and bundled assets for index computation
+  const envAssets = loadAssetsFromEnv()
+  const bundledAssets = loadAssetsFromBundledConfig()
+  const bySymbol = new Map<string, any>()
+  for (const a of bundledAssets) bySymbol.set(a.symbol, a)
+  for (const a of envAssets) bySymbol.set(a.symbol, a)
+  const assets = Array.from(bySymbol.values())
   if (assets.length === 0) throw new Error('no assets configured')
 
   const { freeFloatBySymbol } = await loadAssetFreeFloats()

@@ -12,7 +12,13 @@ export async function performUpdate(
   opts?: { endDay?: string; days?: number; famcOnly?: boolean }
 ) {
   const cfg = loadAppConfig();
-  const assets = cfg.assetConfigFilePath ? loadAssetsFromBundledConfig() : loadAssetsFromEnv();
+  // Merge env and bundled assets, env overrides by symbol
+  const envAssets = loadAssetsFromEnv();
+  const bundledAssets = loadAssetsFromBundledConfig();
+  const bySymbol = new Map<string, any>();
+  for (const a of bundledAssets) bySymbol.set(a.symbol, a);
+  for (const a of envAssets) bySymbol.set(a.symbol, a);
+  const assets = Array.from(bySymbol.values());
   const nowSec = Math.floor(Date.now() / 1000);
   const defaultLookbackDays = Number(process.env.CRON_BACKFILL_DAYS || 7);
   const toUnix = nowSec;

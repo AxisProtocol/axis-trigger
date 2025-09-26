@@ -44,7 +44,13 @@ const baseDayData = {
 
 export const avgindexprice = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().openapi(route, async (c) => {
   const cfg = loadAppConfig();
-  const assets = cfg.assetConfigFilePath ? loadAssetsFromBundledConfig() : loadAssetsFromEnv();
+  // Merge env and bundled assets; env overrides by symbol
+  const envAssets = loadAssetsFromEnv();
+  const bundledAssets = loadAssetsFromBundledConfig();
+  const bySymbol = new Map<string, any>();
+  for (const a of bundledAssets) bySymbol.set(a.symbol, a);
+  for (const a of envAssets) bySymbol.set(a.symbol, a);
+  const assets = Array.from(bySymbol.values());
   if (assets.length === 0) return c.json({ message: "no assets configured" }, 400) as any;
   const symbols = assets.map(a => a.symbol);
   const prisma = (c.get("prisma") as unknown) as PrismaLike;
