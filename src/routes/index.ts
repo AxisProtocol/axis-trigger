@@ -12,6 +12,7 @@ import { tvTime } from "./tv/time";
 import { tvSymbols } from "./tv/symbols";
 import { tvHistory } from "./tv/history";
 import { symbolsApi } from "./api/symbols";
+import { waitlist } from "./api/waitlist";
 
 export const api = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>();
 
@@ -24,6 +25,7 @@ api.route("/api", famcindexprice);
 api.route("/api", update);
 api.route("/api", selection);
 api.route("/api", symbolsApi);
+api.route("/api", waitlist);
 // Mount TradingView endpoints
 api.route("/tv", tvConfig);
 api.route("/tv", tvTime);

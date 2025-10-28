@@ -5,7 +5,7 @@ import { cors } from "hono/cors";
 import type { PrismaLike } from "./db/types";
 import type { KVNamespace } from "@cloudflare/workers-types";
 import { api } from "./routes";
-import { createPrisma } from "./db/prismaD1";
+import { createD1 } from "./db/d1Client";
 import { performUpdate } from "./scheduled/update";
 import { processPendingSettlements } from "./scheduled/settlementProcessor";
 
@@ -45,28 +45,44 @@ app
     maxAge: 600,
     credentials: true,
   }))
-  .get("/docs", swaggerUI({ url: openapi_documentation_route }))
   .use(prettyJSON())
-  // Inject per-request Prisma (D1 adapter) for Workers
-  .use("/*", async (c, next) => {
+  // Inject per-request Prisma (D1 adapter) for Workers - MUST be before routes
+  .use("*", async (c, next) => {
     const env = ((c as any).env as { DB?: any }) || {};
+    console.log("[Middleware] Prisma injection - env.DB available:", !!env.DB);
+    
     if (!env.DB) {
+      console.error("[Middleware] ERROR: Cloudflare D1 binding DB is not available");
       throw new Error("Cloudflare D1 binding DB is not available in the Worker environment");
     }
-    const prisma = createPrisma({ DB: env.DB });
-    (c as any).set("prisma", prisma as unknown as PrismaLike);
+    
+    try {
+      const prisma = createD1({ DB: env.DB });
+      console.log("[Middleware] Prisma client created successfully");
+      console.log("[Middleware] Prisma has waitlist property:", !!prisma.waitlist);
+      (c as any).set("prisma", prisma as unknown as PrismaLike);
+      console.log("[Middleware] Prisma set in context");
+    } catch (error) {
+      console.error("[Middleware] ERROR creating Prisma client:", error);
+      throw error;
+    }
+    
     try {
       await next();
     } finally {
-      try { await (prisma as any).$disconnect?.(); } catch {}
+      try { 
+        const prisma = c.get("prisma") as any;
+        await prisma?.$disconnect?.(); 
+      } catch {}
     }
   })
+  .get("/docs", swaggerUI({ url: openapi_documentation_route }))
   .route("/", api);
 
 export default {
   fetch: app.fetch,
   scheduled: async (event: any, env: any, ctx: any) => {
-    const prisma = createPrisma({ DB: env.DB });
+    const prisma = createD1({ DB: env.DB });
     try {
       // Check if this is a settlement processing cron (every 1 minute)
       if (event.cron === "*/2 * * * *") {

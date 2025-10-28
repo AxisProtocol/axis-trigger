@@ -42,4 +42,17 @@ model Meta {
   value String
 }
 
+model Waitlist {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  consentMarketing Boolean  @default(false)
+  ipHash           String?
+  userAgent        String?
+  source           String?
+  createdAt        DateTime @default(now())
+  verifiedAt       DateTime?
+
+  @@index([createdAt])
+}
+
 

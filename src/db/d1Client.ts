@@ -128,6 +128,96 @@ export function createD1(env: D1Env): PrismaLike {
 
   const client: PrismaLike = {
     price,
+    waitlist: {
+      async findUnique(args: any): Promise<any | null> {
+        if (!args?.where?.email) return null;
+        const sql = `SELECT * FROM Waitlist WHERE email = ?`;
+        return await runGet(sql, [args.where.email]);
+      },
+
+      async findMany(args: any): Promise<Array<any>> {
+        const take = args?.take ?? 100;
+        const skip = args?.skip ?? 0;
+        const orderDir = args?.orderBy?.createdAt === "asc" ? "ASC" : "DESC";
+        
+        const sql = `SELECT * FROM Waitlist ORDER BY createdAt ${orderDir} LIMIT ? OFFSET ?`;
+        const rows = await runAll(sql, [take, skip]);
+        return rows.map((r: any) => ({
+          ...r,
+          createdAt: new Date(String(r.createdAt)),
+          verifiedAt: r.verifiedAt ? new Date(String(r.verifiedAt)) : null,
+        }));
+      },
+
+      async create(args: any): Promise<any> {
+        const { data } = args;
+        const sql = `
+          INSERT INTO Waitlist (id, email, consentMarketing, ipHash, userAgent, source, createdAt, verifiedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        const id = data.id || `cuid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const createdAt = data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString();
+        
+        await runAll(sql, [
+          id,
+          data.email,
+          data.consentMarketing ? 1 : 0,
+          data.ipHash || null,
+          data.userAgent || null,
+          data.source || null,
+          createdAt,
+          data.verifiedAt ? new Date(data.verifiedAt).toISOString() : null,
+        ]);
+
+        return {
+          id,
+          email: data.email,
+          consentMarketing: data.consentMarketing,
+          ipHash: data.ipHash || null,
+          userAgent: data.userAgent || null,
+          source: data.source || null,
+          createdAt: new Date(createdAt),
+          verifiedAt: data.verifiedAt ? new Date(data.verifiedAt) : null,
+        };
+      },
+
+      async count(args?: any): Promise<number> {
+        const where = args?.where;
+        let sql = `SELECT COUNT(*) as count FROM Waitlist`;
+        const params: any[] = [];
+
+        if (where?.verifiedAt?.not === null) {
+          sql += ` WHERE verifiedAt IS NOT NULL`;
+        } else if (where?.verifiedAt?.not !== undefined) {
+          sql += ` WHERE verifiedAt IS NULL`;
+        }
+
+        if (where?.consentMarketing === true) {
+          sql += (sql.includes("WHERE") ? " AND" : " WHERE") + ` consentMarketing = 1`;
+        } else if (where?.consentMarketing === false) {
+          sql += (sql.includes("WHERE") ? " AND" : " WHERE") + ` consentMarketing = 0`;
+        }
+
+        const result = await runGet<{ count: number }>(sql, params);
+        return result?.count ?? 0;
+      },
+
+      async groupBy(args: any): Promise<Array<any>> {
+        const by = args?.by || [];
+        if (!by.includes("source")) return [];
+
+        const sql = `
+          SELECT source, COUNT(*) as _count
+          FROM Waitlist
+          GROUP BY source
+        `;
+        const rows = await runAll<any>(sql, []);
+        return rows.map(r => ({
+          source: r.source,
+          _count: r._count,
+        }));
+      },
+    },
     async $queryRawUnsafe<T = unknown>(...args: any[]): Promise<T> {
       // First arg is SQL; subsequent args are params
       const [sql, ...params] = args;
