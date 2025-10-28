@@ -53,6 +53,16 @@ export async function computeIndexSeries(
   const { symbols, freeFloatBySymbol } = await loadAssetFreeFloats();
   const intervalSec = RES_TO_SEC[resolution];
 
+  // Seed last price for each symbol with the most recent price at or before fromSec
+  const seeds = await Promise.all(symbols.map(async (symbol) => {
+    const row = await (prisma as any).price.findFirst({
+      where: { symbol, priceTimestamp: { lte: new Date(fromSec * 1000) } },
+      orderBy: { priceTimestamp: "desc" },
+      select: { symbol: true, price: true }
+    });
+    return row as { symbol: string; price: string } | null;
+  }));
+
   const prices = await prisma.price.findMany({
     where: {
       symbol: { in: symbols },
@@ -62,6 +72,9 @@ export async function computeIndexSeries(
   });
 
   const lastPriceBySymbol = new Map<string, number>();
+  for (const seed of seeds) {
+    if (seed) lastPriceBySymbol.set(seed.symbol, Number(seed.price));
+  }
   let cursorIdx = 0;
   const t: number[] = [];
   const c: number[] = [];

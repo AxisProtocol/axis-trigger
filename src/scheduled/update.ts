@@ -83,6 +83,7 @@ export async function performUpdate(
   // Deterministic fingerprint of the current constituent set. A simple join is
   // sufficient here to detect set changes without pulling an additional hash lib.
   const setHash = symbolsSorted.join(",");
+  const insertGranular = (env.ASSET_PRICE_GRANULAR || process.env.ASSET_PRICE_GRANULAR) === "true";
   for (const asset of assetsWithCg) {
     const pts = await fetchCoinGeckoRangeUSD(asset.coingeckoId as string, fromUnix, toUnix);
     const ff = freeFloatBySymbol.get(asset.symbol) || 0;
@@ -95,11 +96,18 @@ export async function performUpdate(
       if (!existing || ts >= existing.ts) {
         perDayLast.set(dayTs, { ts, iso: pt.timestampIso, price: pt.price });
       }
+      // Optional granular asset price inserts for minute-level TV computations
+      if (insertGranular) {
+        assetPriceRows.push({ symbol: asset.symbol, source: "coingecko", price: pt.price.toString(), priceTimestamp: pt.timestampIso });
+      }
     }
     // After collecting per-day last prices, update inserts and daily sums once per asset per day
     for (const [dayTs, info] of perDayLast.entries()) {
       if (clampFrom === undefined || dayTs >= clampFrom) {
-        assetPriceRows.push({ symbol: asset.symbol, source: "coingecko", price: info.price.toString(), priceTimestamp: info.iso });
+        // If granular mode is disabled, insert at least daily last
+        if (!insertGranular) {
+          assetPriceRows.push({ symbol: asset.symbol, source: "coingecko", price: info.price.toString(), priceTimestamp: info.iso });
+        }
       }
       sumByDayTs.set(dayTs, (sumByDayTs.get(dayTs) || 0) + ff * info.price);
       countByDayTs.set(dayTs, (countByDayTs.get(dayTs) || 0) + 1);

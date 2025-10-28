@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { PrismaLike } from "../../db/types";
 import { withKvCache } from "../../utils/kvCache";
-import { SUPPORTED_RESOLUTIONS } from "../../utils/indexSeries";
+import { SUPPORTED_RESOLUTIONS, computeIndexSeries, loadAssetFreeFloats } from "../../utils/indexSeries";
 
 const QuerySchema = z.object({
   symbol: z.string().optional(),
@@ -55,6 +55,49 @@ export const tvHistory = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>(
   const intervalSec = RES_TO_SEC[resolution as keyof typeof RES_TO_SEC];
   const famcSymbol = "FAMC_INDEX"; // stored by backfill script
 
+  // If finer than daily is requested, compute from constituents to provide granular data
+  if (symbol === "INDEX:FAMC" && resolution !== "D") {
+    try {
+      // Align start to the latest of the earliest timestamps across all constituents
+      const { symbols } = await loadAssetFreeFloats();
+      const earliestPerSymbol = await Promise.all(symbols.map(async (s) => {
+        const row = await (prisma as any).price.findFirst({
+          where: { symbol: s },
+          orderBy: { priceTimestamp: 'asc' },
+          select: { priceTimestamp: true }
+        });
+        return row?.priceTimestamp as Date | undefined;
+      }));
+      const earliestSecs = earliestPerSymbol.filter(Boolean).map(d => Math.floor((d as Date).getTime() / 1000));
+      const latestOfEarliest = earliestSecs.length > 0 ? Math.max(...earliestSecs) : from;
+      const adjustedFrom = Math.max(from, latestOfEarliest);
+
+      console.log("[tv/history] computing on-the-fly for fine resolution", { requestedResolution: resolution, adjustedFrom, to });
+      let { t: ct, c: cc } = await computeIndexSeries(adjustedFrom, to, resolution as any, prisma);
+      if (ct.length === 0) {
+        // Retry with 5-minute resolution as a minimum granularity fallback
+        if (resolution !== "5") {
+          console.warn("[tv/history] no buckets at requested resolution; retrying 5-min", { requestedResolution: resolution, adjustedFrom, to });
+          const retry = await computeIndexSeries(adjustedFrom, to, "5", prisma);
+          ct = retry.t;
+          cc = retry.c;
+        }
+      }
+      if (ct.length === 0) {
+        console.warn("[tv/history] fine-resolution compute yielded no buckets; falling back to precomputed", { resolution, adjustedFrom, to });
+      } else {
+        const o2 = cc.slice();
+        const h2 = cc.slice();
+        const l2 = cc.slice();
+        const v2 = new Array(cc.length).fill(0);
+        return c.json({ s: "ok", t: ct, c: cc, o: o2, h: h2, l: l2, v: v2, symbol }) as any;
+      }
+    } catch (e) {
+      console.warn("[tv/history] fine-resolution compute failed", e);
+      // fall through to precomputed path which may return sparse data
+    }
+  }
+
   const cacheKey = `tv:history:${famcSymbol}:${resolution}:${from}:${to}`;
   const rows = await withKvCache<Array<{ priceTimestamp: Date; price: string }>>(c, cacheKey, 30, async () => {
     const data = await (prisma as any).price.findMany({
@@ -86,7 +129,26 @@ export const tvHistory = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>(
     }
   }
 
-  if (t.length === 0) return c.json({ s: "no_data" }) as any;
+  // Fallback: if no precomputed index data, compute on the fly from constituents
+  if (t.length === 0 && symbol === "INDEX:FAMC") {
+    try {
+      const { t: ct, c: cc } = await computeIndexSeries(from, to, resolution as any, prisma);
+      if (ct.length === 0) return c.json({ s: "no_data" }) as any;
+      const o2 = cc.slice();
+      const h2 = cc.slice();
+      const l2 = cc.slice();
+      const v2 = new Array(cc.length).fill(0);
+      return c.json({ s: "ok", t: ct, c: cc, o: o2, h: h2, l: l2, v: v2, symbol }) as any;
+    } catch (e) {
+      console.warn("[tv/history] fallback compute failed", e);
+      return c.json({ s: "no_data" }) as any;
+    }
+  }
+
+  if (t.length === 0) {
+    console.warn("[tv/history] no data from precomputed path", { symbol, resolution, from, to });
+    return c.json({ s: "no_data" }) as any;
+  }
   const o = values.slice();
   const h = values.slice();
   const l = values.slice();
