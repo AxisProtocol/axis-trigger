@@ -138,6 +138,61 @@ Endpoints:
   - Response: `{ avg: number; baseDay: { sumOfRatios; assets: [{ symbol; basePrice }] }; symbols: string[]; count: number }`
 - `GET /api/famcindexprice` FAMC index normalized to earliest DB baseline per symbol
   - Response: `{ indexPrice: number; baseDate?: string; baseIndex: number; currentIndex: number; symbols: string[]; count: number }`
+- `GET /api/famcweights` — IVW (inverse-volatility) weights snapshot
+
+Returns quarterly rebalance snapshots for the **Top-5 by market cap** with **Inverse Volatility Weighting (IVW)** (90-day daily log-return stdev). Weights are fixed between rebalances (“drift allowed”).
+
+- **Query**
+  - `from` *(unix seconds, optional)* — default: `now - 365d`
+  - `to` *(unix seconds, optional)* — default: `now`
+  - `resolution` ∈ `1,5,15,60,240,D` *(optional)* — default: `D` (series itself is daily; this is kept for API consistency)
+
+- **Response**
+  ```json
+  {
+    "resolution": "D",
+    "rebalances": [
+      {
+        "t": 1711929600,
+        "basket": ["BTC","ETH","SOL","BNB","XRP"],
+        "weights": { "BTC":0.23, "ETH":0.21, "SOL":0.19, "BNB":0.18, "XRP":0.19 }
+      }
+    ],
+    "latest": {
+      "t": 1727740800,
+      "basket": ["BTC","ETH","SOL","BNB","XRP"],
+      "weights": { "BTC":0.24, "ETH":0.18, "SOL":0.22, "BNB":0.17, "XRP":0.19 }
+    }
+  }
+````
+
+* **Semantics**
+
+  * `t`: UTC timestamp of the **rebalance**. Targets are **Jan/Apr/Jul/Oct 1st 00:00 UTC**, snapped **forward** to the first available observation on the series grid.
+  * `basket`: Top-5 at `t` by **market cap = circulatingSupply × latest price≤t**; assets without supply are excluded.
+  * `weights`: IVW with lookback **L=90 days**. If `σ ≤ 0` or valid observations `< 10`, that asset is excluded from IVW; if all excluded, **equal-weight fallback** on the current basket.
+  * Between rebalances, weights are **kept constant** and only prices move.
+
+* **Examples**
+
+  ```bash
+  curl "https://api.axis-protocol.xyz/api/famcweights?resolution=D"
+  curl "https://api.axis-protocol.xyz/api/famcweights?from=1704067200&to=1727740800&resolution=D"
+  ```
+
+* **Client tips**
+
+  * Use `latest.weights` to show the current allocation on the dashboard.
+  * Plot `rebalances` (step chart) to visualize quarter-to-quarter weight shifts.
+  * This endpoint is cached (`TTL≈60s`) via KV to reduce load.
+
+* **Notes**
+
+  * No schema changes required; uses existing `Price` / `Asset` tables.
+  * Works with D1 or (via Hyperdrive) external Postgres; if history < 90d, expect more frequent **equal-weight fallbacks**.
+
+```
+
 - `POST /api/update` backfills recent prices from CoinGecko and returns a summary
   - Header: `x-update-key: <UPDATE_ACCESS_KEY>`
   - Env: `CRON_BACKFILL_DAYS` controls lookback window (default 7)

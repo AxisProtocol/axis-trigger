@@ -9,6 +9,7 @@ export interface AxisIvwParams {
   resolution: Reso;
   L?: number;
   K?: number;
+  histBufferDays?: number;
 }
 
 export interface AxisIvwSeries {
@@ -16,9 +17,15 @@ export interface AxisIvwSeries {
   c: number[];
 }
 
+export interface AxisIvwWeights {
+  resolution: Reso;
+  rebalances: Array<{ t: number; basket: string[]; weights: Record<string, number> }>;
+  latest: { t: number; basket: string[]; weights: Record<string, number> } | null;
+}
+
 export async function computeAxisIvwSeries(
   prisma: PrismaLike,
-  { from, to, resolution, L = 90, K = 5 }: AxisIvwParams
+  { from, to, resolution, L = 90, K = 5, histBufferDays = 30 }: AxisIvwParams
 ): Promise<AxisIvwSeries> {
   const env = loadAssetsFromEnv();
   const bundled = loadAssetsFromBundledConfig();
@@ -28,24 +35,125 @@ export async function computeAxisIvwSeries(
   const symbols = Array.from(bySym.values()).map((a) => a.symbol);
   if (!symbols.length) return { t: [], c: [] };
 
+  const fromHist = from - (L + histBufferDays) * 86400;
+  const rows = await fetchPrices(prisma, symbols, fromHist, to);
+  const series = toSeries(symbols, rows);
+  const tGridFull = mergeAndSortUniqueT(series);
+  if (!tGridFull.length) return { t: [], c: [] };
+
+  const assetRows = await fetchAssets(prisma, symbols);
+  const supply: Record<string, number> = {};
+  for (const r of assetRows) supply[r.symbol] = Number(r.circulatingSupply ?? 0);
+
+  const rbTargets = quarterlyTargetsBetween(fromHist, to);
+  const rbDates = snapTargetsToSeries(rbTargets, tGridFull);
+
+  let idx = 100;
+  const cAll: number[] = [];
+  let w: Record<string, number> = {};
+  let k = 0;
+
+  for (let i = 0; i < tGridFull.length; i++) {
+    const t = tGridFull[i];
+    if (k < rbDates.length && t >= rbDates[k]) {
+      const basket = pickTopKByMcap(symbols, series, supply, t, K);
+      w = inverseVolWeights(series, basket, t, L);
+      k++;
+    }
+    const r = portfolioReturnAt(series, w, i, tGridFull);
+    idx *= 1 + r;
+    cAll.push(idx);
+  }
+
+  const cut = cutToWindow(tGridFull, cAll, from, to);
+  return { t: cut.t, c: cut.c };
+}
+
+export async function computeAxisIvwWeights(
+  prisma: PrismaLike,
+  { from, to, resolution, L = 90, K = 5, histBufferDays = 30 }: AxisIvwParams
+): Promise<AxisIvwWeights> {
+  const env = loadAssetsFromEnv();
+  const bundled = loadAssetsFromBundledConfig();
+  const bySym = new Map<string, any>();
+  for (const a of bundled) bySym.set(a.symbol, a);
+  for (const a of env) bySym.set(a.symbol, a);
+  const symbols = Array.from(bySym.values()).map((a) => a.symbol);
+  if (!symbols.length) return { resolution, rebalances: [], latest: null };
+
+  const fromHist = from - (L + histBufferDays) * 86400;
+  const rows = await fetchPrices(prisma, symbols, fromHist, to);
+  const series = toSeries(symbols, rows);
+  const tGridFull = mergeAndSortUniqueT(series);
+  if (!tGridFull.length) return { resolution, rebalances: [], latest: null };
+
+  const assetRows = await fetchAssets(prisma, symbols);
+  const supply: Record<string, number> = {};
+  for (const r of assetRows) supply[r.symbol] = Number(r.circulatingSupply ?? 0);
+
+  const rbTargets = quarterlyTargetsBetween(fromHist, to);
+  const rbDates = snapTargetsToSeries(rbTargets, tGridFull);
+
+  const rebalances: Array<{ t: number; basket: string[]; weights: Record<string, number> }> = [];
+  for (const t of rbDates) {
+    if (t < from) continue;
+    if (t > to) break;
+    const basket = pickTopKByMcap(symbols, series, supply, t, K);
+    const weights = inverseVolWeights(series, basket, t, L);
+    rebalances.push({ t, basket, weights });
+  }
+  const latest = rebalances.length ? rebalances[rebalances.length - 1] : null;
+
+  return { resolution, rebalances, latest };
+}
+
+async function fetchPrices(prisma: PrismaLike, symbols: string[], from: number, to: number) {
   const placeholders = symbols.map(() => "?").join(",");
   const fromIso = new Date(from * 1000).toISOString();
   const toIso = new Date(to * 1000).toISOString();
-
-  const rows = (await (prisma as any).$queryRawUnsafe(
-    `
+  const sql = `
     SELECT symbol, priceTimestamp AS ts, price
     FROM Price
     WHERE symbol IN (${placeholders})
       AND priceTimestamp >= ?
       AND priceTimestamp <= ?
     ORDER BY priceTimestamp ASC
-  `,
+  `;
+  const rows = await (prisma as any).$queryRawUnsafe(
+    sql,
     ...symbols,
     fromIso,
     toIso
-  )) as Array<{ symbol: string; ts: string | Date; price: number | string }>;
+  ) as Array<{ symbol: string; ts: string | Date; price: number | string }>;
+  return rows;
+}
 
+async function fetchAssets(prisma: PrismaLike, symbols: string[]) {
+    const anyPrisma = prisma as any;
+  
+    if (anyPrisma.asset?.findMany) {
+      return await anyPrisma.asset.findMany({
+        where: { symbol: { in: symbols } },
+        select: { symbol: true, circulatingSupply: true },
+      }) as Array<{ symbol: string; circulatingSupply: number | null }>;
+    }
+  
+    if (!symbols.length) return [] as Array<{ symbol: string; circulatingSupply: number | null }>;
+    const placeholders = symbols.map(() => "?").join(",");
+    const sql = `
+      SELECT symbol, circulatingSupply
+      FROM Asset
+      WHERE symbol IN (${placeholders})
+    `;
+    const rows = await anyPrisma.$queryRawUnsafe(
+      sql,
+      ...symbols
+    ) as Array<{ symbol: string; circulatingSupply: number | null }>;
+    return rows;
+  }
+  
+
+function toSeries(symbols: string[], rows: Array<{ symbol: string; ts: string | Date; price: number | string }>) {
   const series = new Map<string, Array<{ t: number; p: number }>>();
   for (const s of symbols) series.set(s, []);
   for (const r of rows) {
@@ -55,44 +163,19 @@ export async function computeAxisIvwSeries(
     const tsec = Math.floor(ts.getTime() / 1000);
     series.get(r.symbol)!.push({ t: tsec, p: pNum });
   }
+  return series;
+}
 
-  const tGrid = mergeAndSortUniqueT(series);
-  if (!tGrid.length) return { t: [], c: [] };
-
-  const assetPlaceholders = symbols.map(() => "?").join(",");
-  const assetRows = (await (prisma as any).$queryRawUnsafe(
-    `
-    SELECT symbol, circulatingSupply
-    FROM Asset
-    WHERE symbol IN (${assetPlaceholders})
-  `,
-    ...symbols
-  )) as Array<{ symbol: string; circulatingSupply: number | string | null }>;
-
-  const supply: Record<string, number> = {};
-  for (const r of assetRows) supply[r.symbol] = Number(r.circulatingSupply ?? 0);
-
-  const rbTargets = quarterlyTargetsBetween(from, to);
-  const rbDates = snapTargetsToSeries(rbTargets, tGrid);
-
-  let idx = 100;
+function cutToWindow(tFull: number[], cFull: number[], from: number, to: number) {
+  const t: number[] = [];
   const c: number[] = [];
-  let w: Record<string, number> = {};
-  let k = 0;
-
-  for (let i = 0; i < tGrid.length; i++) {
-    const t = tGrid[i];
-    if (k < rbDates.length && t >= rbDates[k]) {
-      const basket = pickTopKByMcap(symbols, series, supply, t, K);
-      w = inverseVolWeights(series, basket, t, L);
-      k++;
-    }
-    const pr = portfolioReturnAt(series, w, i, tGrid);
-    idx *= 1 + pr;
-    c.push(idx);
+  for (let i = 0; i < tFull.length; i++) {
+    const tt = tFull[i];
+    if (tt < from || tt > to) continue;
+    t.push(tt);
+    c.push(cFull[i]);
   }
-
-  return { t: tGrid, c };
+  return { t, c };
 }
 
 function mergeAndSortUniqueT(map: Map<string, Array<{ t: number; p: number }>>) {
@@ -106,7 +189,7 @@ function quarterlyTargetsBetween(from: number, to: number) {
   const d = new Date(from * 1000);
   d.setUTCDate(1);
   d.setUTCHours(0, 0, 0, 0);
-  while (Math.floor(d.getTime() / 1000) <= to) {
+  while (d.getTime() / 1000 <= to) {
     const m = d.getUTCMonth();
     if (m === 0 || m === 3 || m === 6 || m === 9) out.push(Math.floor(d.getTime() / 1000));
     d.setUTCMonth(m + 1);
@@ -203,8 +286,7 @@ function portfolioReturnAt(
 ) {
   if (i === 0) return 0;
   let r = 0;
-  const t0 = grid[i - 1];
-  const t1 = grid[i];
+  const t0 = grid[i - 1], t1 = grid[i];
   for (const [sym, wi] of Object.entries(w)) {
     const s = series.get(sym)!;
     const p0 = latestAtOrBefore(s, t0)?.p;
