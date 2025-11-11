@@ -1,7 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { PrismaLike } from "../../db/types";
 import { withKvCache } from "../../utils/kvCache";
-import { computeIndexSeries, SUPPORTED_RESOLUTIONS } from "../../utils/indexSeries";
+import { SUPPORTED_RESOLUTIONS } from "../../utils/indexSeries";
+import { computeAxisIvwSeries } from "../../utils/axisIVW";
 
 const QuerySchema = z.object({
   from: z.coerce.number().int().optional().openapi({ description: "Start time (unix seconds)" }),
@@ -35,9 +36,9 @@ export const famc = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().ope
     return c.json({ message: "invalid resolution" }, 400) as any;
   }
   const prisma = (c.get("prisma") as unknown) as PrismaLike;
-  const cacheKey = `api:famc:${resolution}:${from}:${to}`;
-  const { t, c: values } = await withKvCache(c, cacheKey, 30, async () => computeIndexSeries(from, to, resolution, prisma));
+  const cacheKey = `api:famc_ivw:${resolution}:${from}:${to}`;
+  const { t, c: values } = await withKvCache(c, cacheKey, 60, async () =>
+    computeAxisIvwSeries(prisma, { from, to, resolution })
+  );
   return c.json({ t, value: values, resolution }) as any;
 });
-
-

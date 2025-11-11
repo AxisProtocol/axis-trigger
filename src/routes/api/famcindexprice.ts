@@ -1,7 +1,6 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { PrismaLike } from "../../db/types";
-import { loadAssetsFromBundledConfig, loadAssetsFromEnv } from "../../providers/envAssets";
-import { loadAssetFreeFloats } from "../../utils/indexSeries";
+import { computeAxisIvwSeries } from "../../utils/axisIVW";
 
 const ResponseSchema = z.object({
   indexPrice: z.number(),
@@ -24,37 +23,39 @@ const route = createRoute({
   },
 });
 
+const famcSymbol = "FAMC_INDEX";
+
 export const famcindexprice = new OpenAPIHono<{ Variables: { prisma: PrismaLike } }>().openapi(route, async (c) => {
-  const { symbols, freeFloatBySymbol } = await loadAssetFreeFloats();
-  if (symbols.length === 0) return c.json({ message: "no assets configured" }, 400) as any;
-  
   const prisma = (c.get("prisma") as unknown) as PrismaLike;
-  // Determine overall time range across configured symbols
-  // Align with TV history: use precomputed FAMC_INDEX series stored in prices
-  const famcSymbol = "FAMC_INDEX";
-  const [earliestIndexRow, latestIndexRow] = await Promise.all([
+  const to = Math.floor(Date.now() / 1000);
+  const from = to - 365 * 86400;
+  try {
+    const { t, c: series } = await computeAxisIvwSeries(prisma, { from, to, resolution: "D" });
+    if (t.length > 0) {
+      const baseIndex = series[0];
+      const currentIndex = series[series.length - 1];
+      const indexPrice = currentIndex;
+      const baseDateIso = new Date(t[0] * 1000).toISOString();
+      return c.json({ indexPrice, baseDate: baseDateIso, baseIndex, currentIndex, symbols: [], count: 0 }) as any;
+    }
+  } catch {}
+  const [earliest, latest] = await Promise.all([
     (prisma as any).price.findFirst({
       where: { symbol: famcSymbol },
-      orderBy: { priceTimestamp: 'asc' },
-      select: { priceTimestamp: true, price: true }
+      orderBy: { priceTimestamp: "asc" },
+      select: { priceTimestamp: true, price: true },
     }),
     (prisma as any).price.findFirst({
       where: { symbol: famcSymbol },
-      orderBy: { priceTimestamp: 'desc' },
-      select: { priceTimestamp: true, price: true }
-    })
+      orderBy: { priceTimestamp: "desc" },
+      select: { priceTimestamp: true, price: true },
+    }),
   ]);
-
-  if (!earliestIndexRow || !latestIndexRow) return c.json({ message: "no index data available" }, 404) as any;
-
-  const baseIndex = Number(earliestIndexRow.price);
-  const currentIndex = Number(latestIndexRow.price);
+  if (!earliest || !latest) return c.json({ message: "no index data available" }, 404) as any;
+  const baseIndex = Number(earliest.price);
+  const currentIndex = Number(latest.price);
   if (baseIndex === 0) return c.json({ message: "baseline index is zero" }, 400) as any;
-
   const indexPrice = 100 * (currentIndex / baseIndex);
-  const baseDateIso = new Date(earliestIndexRow.priceTimestamp).toISOString();
-  console.log("[famcindexprice] using precomputed index", { baseDateIso, baseIndex, currentIndex });
-  return c.json({ indexPrice, baseDate: baseDateIso, baseIndex, currentIndex, symbols, count: symbols.length }) as any;
+  const baseDateIso = new Date(earliest.priceTimestamp).toISOString();
+  return c.json({ indexPrice, baseDate: baseDateIso, baseIndex, currentIndex, symbols: [famcSymbol], count: 1 }) as any;
 });
-
-
