@@ -11,9 +11,9 @@ export function computeFreeFloat(asset: AssetInput): { freeFloat: number; warnin
   return { freeFloat, warnings };
 }
 
-export function computeFAMC(asset: AssetInput, quote: PriceQuote): AssetComputed {
+export function computeFAMC(asset: AssetInput, quote: PriceQuote, weight?: number): AssetComputed {
   const { freeFloat, warnings } = computeFreeFloat(asset);
-  const famc = freeFloat * quote.price;
+  const famc = freeFloat * quote.price * (weight ?? 1);
   return {
     ...asset,
     freeFloat,
