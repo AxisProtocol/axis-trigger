@@ -12,3 +12,6 @@ CREATE TABLE IF NOT EXISTS Waitlist (
 
 -- Create index on createdAt for sorting and filtering
 CREATE INDEX idx_waitlist_createdAt ON Waitlist(createdAt);
+
+
+
